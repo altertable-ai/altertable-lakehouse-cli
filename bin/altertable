@@ -1,0 +1,440 @@
+#!/bin/bash
+# altertable - Lakehouse CLI
+# Usage: altertable <command> [args]
+
+set -e
+
+VERSION="0.1.0"
+API_BASE="https://api.altertable.ai"
+USER_AGENT="altertable-lakehouse-cli/${VERSION}"
+
+usage() {
+  cat <<EOF
+altertable-lakehouse-cli v${VERSION}
+
+Usage: altertable <command> [options]
+
+Commands:
+  query     Run a SQL query
+  append    Append data to a table
+  upload    Upload a file to a table
+  get-query Get details of a query
+  cancel    Cancel a running query
+  validate  Validate a SQL statement
+
+Environment Variables:
+  ALTERTABLE_USERNAME           API Username
+  ALTERTABLE_PASSWORD           API Password
+  ALTERTABLE_BASIC_AUTH_TOKEN   Pre-encoded Basic Auth Token (optional)
+  ALTERTABLE_API_BASE           API Base URL (default: https://api.altertable.ai)
+
+Global Options:
+  -h, --help    Show help
+  -v, --version Show version
+  --debug       Enable debug output
+
+EOF
+}
+
+# --- Utilities ---
+
+log_debug() {
+  if [[ "${DEBUG}" == "true" ]]; then
+    echo "[DEBUG] $1" >&2
+  fi
+}
+
+log_error() {
+  echo "[ERROR] $1" >&2
+}
+
+check_deps() {
+  if ! command -v curl >/dev/null 2>&1; then
+    log_error "curl is required but not installed."
+    exit 1
+  fi
+}
+
+get_auth_header() {
+  if [[ -n "${ALTERTABLE_BASIC_AUTH_TOKEN}" ]]; then
+    echo "Authorization: Basic ${ALTERTABLE_BASIC_AUTH_TOKEN}"
+  elif [[ -n "${ALTERTABLE_USERNAME}" && -n "${ALTERTABLE_PASSWORD}" ]]; then
+    # Create base64 token manually using openssl or base64
+    local token
+    token=$(echo -n "${ALTERTABLE_USERNAME}:${ALTERTABLE_PASSWORD}" | base64 | tr -d '\n')
+    echo "Authorization: Basic ${token}"
+  else
+    log_error "Missing authentication. Set ALTERTABLE_USERNAME/PASSWORD or ALTERTABLE_BASIC_AUTH_TOKEN."
+    exit 1
+  fi
+}
+
+http_request() {
+  local method="$1"
+  local endpoint="$2"
+  local data="$3"
+  local extra_headers=("${@:4}")
+  
+  local url="${ALTERTABLE_API_BASE:-$API_BASE}${endpoint}"
+  local auth_header
+  auth_header=$(get_auth_header)
+
+  local curl_opts=(
+    -s
+    -X "${method}"
+    -H "${auth_header}"
+    -H "User-Agent: ${USER_AGENT}"
+  )
+
+  if [[ -n "${data}" ]]; then
+    if [[ "${data}" == "@"* ]]; then
+        # File upload
+        # Check if content-type is octet-stream to decide on --data-binary
+        local is_binary=false
+        for h in "${extra_headers[@]}"; do
+            if [[ "$h" == *"Content-Type: application/octet-stream"* ]]; then
+                is_binary=true
+                break
+            fi
+        done
+        
+        if [[ "$is_binary" == "true" ]]; then
+            curl_opts+=(--data-binary "${data}")
+        else
+            curl_opts+=(-d "${data}")
+        fi
+    else
+        # JSON body
+        curl_opts+=(-H "Content-Type: application/json")
+        curl_opts+=(-d "${data}")
+    fi
+  fi
+  
+  for h in "${extra_headers[@]}"; do
+    curl_opts+=(-H "${h}")
+  done
+
+  log_debug "Request: ${method} ${url}"
+  
+  local response
+  response=$(curl "${curl_opts[@]}" "${url}")
+  
+  # Basic error check (if response is empty or curl failed)
+  if [[ $? -ne 0 ]]; then
+      log_error "Request failed."
+      exit 1
+  fi
+
+  # Check for jq and pretty print if available and response is JSON
+  if command -v jq >/dev/null 2>&1 && [[ "${response}" == "{"* || "${response}" == "["* ]]; then
+     echo "${response}" | jq .
+  else
+     echo "${response}"
+  fi
+}
+
+
+# --- Commands ---
+
+cmd_query() {
+  local statement=""
+  local format="json" # Default format (accumulated)
+  
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --statement) statement="$2"; shift 2 ;;
+      --format) format="$2"; shift 2 ;; # json (accumulated) or ndjson (stream)
+      *) log_error "Unknown option: $1"; exit 1 ;;
+    esac
+  done
+
+  if [[ -z "${statement}" ]]; then
+    log_error "Missing required argument: --statement"
+    exit 1
+  fi
+
+  # Construct payload using jq if available, else manual
+  if command -v jq >/dev/null 2>&1; then
+    local payload
+    payload=$(jq -n --arg stmt "$statement" '{statement: $stmt}')
+  else
+    # Simple manual escaping (fragile)
+    local safe_statement
+    safe_statement=$(echo "${statement}" | sed 's/"/\\"/g')
+    local payload="{\"statement\": \"${safe_statement}\"}"
+  fi
+
+  if [[ "${format}" == "ndjson" ]]; then
+     # For streaming, we might want to just output raw NDJSON lines or pipe to jq if user wants
+     # Here we just output raw
+     local url="${ALTERTABLE_API_BASE:-$API_BASE}/query"
+     local auth_header
+     if [[ -n "${ALTERTABLE_BASIC_AUTH_TOKEN}" ]]; then
+        auth_header="Authorization: Basic ${ALTERTABLE_BASIC_AUTH_TOKEN}"
+     elif [[ -n "${ALTERTABLE_USERNAME}" && -n "${ALTERTABLE_PASSWORD}" ]]; then
+        local token
+        token=$(echo -n "${ALTERTABLE_USERNAME}:${ALTERTABLE_PASSWORD}" | base64 | tr -d '\n')
+        auth_header="Authorization: Basic ${token}"
+     fi
+     
+     curl -s -X POST -H "${auth_header}" -H "User-Agent: ${USER_AGENT}" \
+          -H "Content-Type: application/json" -H "Accept: application/x-ndjson" \
+          -d "${payload}" "${url}"
+  else
+     # Accumulated response
+     local response
+     local url="${ALTERTABLE_API_BASE:-$API_BASE}/query"
+     local auth_header
+     if [[ -n "${ALTERTABLE_BASIC_AUTH_TOKEN}" ]]; then
+        auth_header="Authorization: Basic ${ALTERTABLE_BASIC_AUTH_TOKEN}"
+     elif [[ -n "${ALTERTABLE_USERNAME}" && -n "${ALTERTABLE_PASSWORD}" ]]; then
+        local token
+        token=$(echo -n "${ALTERTABLE_USERNAME}:${ALTERTABLE_PASSWORD}" | base64 | tr -d '\n')
+        auth_header="Authorization: Basic ${token}"
+     fi
+
+     response=$(curl -s -X POST -H "${auth_header}" -H "User-Agent: ${USER_AGENT}" \
+          -H "Content-Type: application/json" \
+          -d "${payload}" "${url}")
+     
+     if command -v jq >/dev/null 2>&1; then
+        echo "${response}" | jq .
+     else
+        echo "${response}"
+     fi
+  fi
+}
+
+cmd_validate() {
+  local statement=""
+  
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --statement) statement="$2"; shift 2 ;;
+      *) log_error "Unknown option: $1"; exit 1 ;;
+    esac
+  done
+
+  if [[ -z "${statement}" ]]; then
+    log_error "Missing required argument: --statement"
+    exit 1
+  fi
+
+  if command -v jq >/dev/null 2>&1; then
+    local payload
+    payload=$(jq -n --arg stmt "$statement" '{statement: $stmt}')
+  else
+    local safe_statement
+    safe_statement=$(echo "${statement}" | sed 's/"/\\"/g')
+    local payload="{\"statement\": \"${safe_statement}\"}"
+  fi
+  
+  local response
+  local url="${ALTERTABLE_API_BASE:-$API_BASE}/validate"
+  local auth_header
+  if [[ -n "${ALTERTABLE_BASIC_AUTH_TOKEN}" ]]; then
+     auth_header="Authorization: Basic ${ALTERTABLE_BASIC_AUTH_TOKEN}"
+  elif [[ -n "${ALTERTABLE_USERNAME}" && -n "${ALTERTABLE_PASSWORD}" ]]; then
+     local token
+     token=$(echo -n "${ALTERTABLE_USERNAME}:${ALTERTABLE_PASSWORD}" | base64 | tr -d '\n')
+     auth_header="Authorization: Basic ${token}"
+  fi
+
+  response=$(curl -s -X POST -H "${auth_header}" -H "User-Agent: ${USER_AGENT}" \
+       -H "Content-Type: application/json" \
+       -d "${payload}" "${url}")
+
+  if command -v jq >/dev/null 2>&1; then
+     echo "${response}" | jq .
+  else
+     echo "${response}"
+  fi
+}
+
+urlencode() {
+    # safe for alpha-numeric + some common chars, but better to use python/perl if available
+    local string="$1"
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c "import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))" "$string"
+    elif command -v perl >/dev/null 2>&1; then
+        perl -MURI::Escape -e 'print uri_escape($ARGV[0]);' "$string"
+    else
+        # minimal fallback
+        echo "$string" | sed 's/ /%20/g'
+    fi
+}
+
+cmd_append() {
+  local catalog=""
+  local schema=""
+  local table=""
+  local data=""
+  
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --catalog) catalog="$2"; shift 2 ;;
+      --schema) schema="$2"; shift 2 ;;
+      --table) table="$2"; shift 2 ;;
+      --data) data="$2"; shift 2 ;;
+      *) log_error "Unknown option: $1"; exit 1 ;;
+    esac
+  done
+
+  if [[ -z "${catalog}" || -z "${schema}" || -z "${table}" || -z "${data}" ]]; then
+    log_error "Missing required arguments. Need --catalog, --schema, --table, and --data."
+    exit 1
+  fi
+  
+  # Logic to construct payload (Single/Batch wrapper)
+  local payload
+  local json_content
+
+  if [[ "${data}" == "@"* ]]; then
+      local filepath="${data:1}"
+      if [[ ! -f "${filepath}" ]]; then
+          log_error "File not found: ${filepath}"
+          exit 1
+      fi
+      json_content=$(cat "${filepath}")
+  else
+      json_content="${data}"
+  fi
+
+  # Basic check: starts with [ is Batch, { is Single
+  local first_char
+  first_char=$(echo "${json_content}" | tr -d '[:space:]' | head -c 1)
+
+  if [[ "${first_char}" == "[" ]]; then
+     if command -v jq >/dev/null 2>&1; then
+       # Use jq to wrap safely
+       payload=$(echo "${json_content}" | jq -c '{"Batch": .}')
+     else
+       payload="{\"Batch\": ${json_content}}"
+     fi
+  elif [[ "${first_char}" == "{" ]]; then
+     if command -v jq >/dev/null 2>&1; then
+       payload=$(echo "${json_content}" | jq -c '{"Single": .}')
+     else
+       payload="{\"Single\": ${json_content}}"
+     fi
+  else
+     log_error "Data must be a JSON object or array."
+     exit 1
+  fi
+
+  local catalog_enc=$(urlencode "$catalog")
+  local schema_enc=$(urlencode "$schema")
+  local table_enc=$(urlencode "$table")
+  
+  local url_params="catalog=${catalog_enc}&schema=${schema_enc}&table=${table_enc}"
+  http_request "POST" "/append?${url_params}" "${payload}"
+}
+
+
+cmd_upload() {
+  local catalog=""
+  local schema=""
+  local table=""
+  local format=""
+  local mode=""
+  local primary_key=""
+  local file=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --catalog) catalog="$2"; shift 2 ;;
+      --schema) schema="$2"; shift 2 ;;
+      --table) table="$2"; shift 2 ;;
+      --format) format="$2"; shift 2 ;;
+      --mode) mode="$2"; shift 2 ;;
+      --primary-key) primary_key="$2"; shift 2 ;;
+      --file) file="$2"; shift 2 ;;
+      *) log_error "Unknown option: $1"; exit 1 ;;
+    esac
+  done
+
+  if [[ -z "${catalog}" || -z "${schema}" || -z "${table}" || -z "${format}" || -z "${mode}" || -z "${file}" ]]; then
+      log_error "Missing required arguments."
+      exit 1
+  fi
+  
+  if [[ "${mode}" == "upsert" && -z "${primary_key}" ]]; then
+      log_error "primary-key is required when mode is upsert."
+      exit 1
+  fi
+
+  if [[ ! -f "${file}" ]]; then
+      log_error "File not found: ${file}"
+      exit 1
+  fi
+
+  local catalog_enc=$(urlencode "$catalog")
+  local schema_enc=$(urlencode "$schema")
+  local table_enc=$(urlencode "$table")
+  local format_enc=$(urlencode "$format")
+  local mode_enc=$(urlencode "$mode")
+
+  local url_params="catalog=${catalog_enc}&schema=${schema_enc}&table=${table_enc}&format=${format_enc}&mode=${mode_enc}"
+  if [[ -n "${primary_key}" ]]; then
+      local pk_enc=$(urlencode "$primary_key")
+      url_params+="&primary_key=${pk_enc}"
+  fi
+
+  # Upload is binary body
+  http_request "POST" "/upload?${url_params}" "@${file}" "Content-Type: application/octet-stream"
+}
+
+cmd_get_query() {
+    local query_id="$1"
+    if [[ -z "${query_id}" ]]; then
+        log_error "Missing query_id"
+        exit 1
+    fi
+    local query_id_enc=$(urlencode "$query_id")
+    http_request "GET" "/query/${query_id_enc}" ""
+}
+
+cmd_cancel() {
+    local query_id=""
+    local session_id=""
+
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --query-id) query_id="$2"; shift 2 ;;
+        --session-id) session_id="$2"; shift 2 ;;
+        *) log_error "Unknown option: $1"; exit 1 ;;
+      esac
+    done
+
+    if [[ -z "${query_id}" || -z "${session_id}" ]]; then
+        log_error "Missing required arguments: --query-id and --session-id"
+        exit 1
+    fi
+    
+    local query_id_enc=$(urlencode "$query_id")
+    local session_id_enc=$(urlencode "$session_id")
+    http_request "DELETE" "/query/${query_id_enc}?session_id=${session_id_enc}" ""
+}
+
+
+# --- Main ---
+
+if [[ $# -eq 0 ]]; then
+  usage
+  exit 1
+fi
+
+COMMAND="$1"
+shift
+
+case "${COMMAND}" in
+  query) cmd_query "$@" ;;
+  validate) cmd_validate "$@" ;;
+  append) cmd_append "$@" ;;
+  upload) cmd_upload "$@" ;;
+  get-query) cmd_get_query "$@" ;;
+  cancel) cmd_cancel "$@" ;;
+  help|--help|-h) usage ;;
+  version|--version|-v) echo "altertable-lakehouse-cli v${VERSION}";;
+  *) log_error "Unknown command: ${COMMAND}"; usage; exit 1 ;;
+esac
