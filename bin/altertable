@@ -322,9 +322,12 @@ cmd_append() {
      exit 1
   fi
 
-  local catalog_enc=$(urlencode "$catalog")
-  local schema_enc=$(urlencode "$schema")
-  local table_enc=$(urlencode "$table")
+  local catalog_enc
+  catalog_enc=$(urlencode "$catalog")
+  local schema_enc
+  schema_enc=$(urlencode "$schema")
+  local table_enc
+  table_enc=$(urlencode "$table")
   
   local url_params="catalog=${catalog_enc}&schema=${schema_enc}&table=${table_enc}"
   http_request "POST" "/append?${url_params}" "${payload}"
@@ -368,15 +371,21 @@ cmd_upload() {
       exit 1
   fi
 
-  local catalog_enc=$(urlencode "$catalog")
-  local schema_enc=$(urlencode "$schema")
-  local table_enc=$(urlencode "$table")
-  local format_enc=$(urlencode "$format")
-  local mode_enc=$(urlencode "$mode")
+  local catalog_enc
+  catalog_enc=$(urlencode "$catalog")
+  local schema_enc
+  schema_enc=$(urlencode "$schema")
+  local table_enc
+  table_enc=$(urlencode "$table")
+  local format_enc
+  format_enc=$(urlencode "$format")
+  local mode_enc
+  mode_enc=$(urlencode "$mode")
 
   local url_params="catalog=${catalog_enc}&schema=${schema_enc}&table=${table_enc}&format=${format_enc}&mode=${mode_enc}"
   if [[ -n "${primary_key}" ]]; then
-      local pk_enc=$(urlencode "$primary_key")
+      local pk_enc
+      pk_enc=$(urlencode "$primary_key")
       url_params+="&primary_key=${pk_enc}"
   fi
 
@@ -390,7 +399,8 @@ cmd_get_query() {
         log_error "Missing query_id"
         exit 1
     fi
-    local query_id_enc=$(urlencode "$query_id")
+    local query_id_enc
+    query_id_enc=$(urlencode "$query_id")
     http_request "GET" "/query/${query_id_enc}" ""
 }
 
@@ -411,8 +421,10 @@ cmd_cancel() {
         exit 1
     fi
     
-    local query_id_enc=$(urlencode "$query_id")
-    local session_id_enc=$(urlencode "$session_id")
+    local query_id_enc
+    query_id_enc=$(urlencode "$query_id")
+    local session_id_enc
+    session_id_enc=$(urlencode "$session_id")
     http_request "DELETE" "/query/${query_id_enc}?session_id=${session_id_enc}" ""
 }
 
