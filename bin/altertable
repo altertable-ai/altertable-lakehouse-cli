@@ -241,26 +241,7 @@ cmd_validate() {
     local payload="{\"statement\": \"${safe_statement}\"}"
   fi
   
-  local response
-  local url="${ALTERTABLE_API_BASE:-$API_BASE}/validate"
-  local auth_header
-  if [[ -n "${ALTERTABLE_BASIC_AUTH_TOKEN}" ]]; then
-     auth_header="Authorization: Basic ${ALTERTABLE_BASIC_AUTH_TOKEN}"
-  elif [[ -n "${ALTERTABLE_USERNAME}" && -n "${ALTERTABLE_PASSWORD}" ]]; then
-     local token
-     token=$(echo -n "${ALTERTABLE_USERNAME}:${ALTERTABLE_PASSWORD}" | base64 | tr -d '\n')
-     auth_header="Authorization: Basic ${token}"
-  fi
-
-  response=$(curl -s -X POST -H "${auth_header}" -H "User-Agent: ${USER_AGENT}" \
-       -H "Content-Type: application/json" \
-       -d "${payload}" "${url}")
-
-  if command -v jq >/dev/null 2>&1; then
-     echo "${response}" | jq .
-  else
-     echo "${response}"
-  fi
+  http_request "POST" "/validate" "${payload}" "Content-Type: application/json"
 }
 
 urlencode() {
