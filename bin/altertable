@@ -191,21 +191,26 @@ cmd_query() {
   fi
 
   if [[ "${format}" == "ndjson" ]]; then
-     # For streaming, we might want to just output raw NDJSON lines or pipe to jq if user wants
-     # Here we just output raw
-     local url="${ALTERTABLE_API_BASE:-$API_BASE}/query"
-     local auth_header
-     if [[ -n "${ALTERTABLE_BASIC_AUTH_TOKEN}" ]]; then
-        auth_header="Authorization: Basic ${ALTERTABLE_BASIC_AUTH_TOKEN}"
-     elif [[ -n "${ALTERTABLE_USERNAME}" && -n "${ALTERTABLE_PASSWORD}" ]]; then
-        local token
-        token=$(echo -n "${ALTERTABLE_USERNAME}:${ALTERTABLE_PASSWORD}" | base64 | tr -d '\n')
-        auth_header="Authorization: Basic ${token}"
-     fi
+     # For streaming, we output raw lines.
+     # We use http_request logic but modified for streaming to stdout directly,
+     # but we still want to catch error codes.
      
-     curl -s -X POST -H "${auth_header}" -H "User-Agent: ${USER_AGENT}" \
-          -H "Content-Type: application/json" -H "Accept: application/x-ndjson" \
-          -d "${payload}" "${url}"
+     # Re-use http_request but with Accept: application/x-ndjson
+     # However, http_request buffers response to check status code.
+     # For streaming large responses, buffering is bad.
+     # BUT, if we get a 401/400/500, the body is small JSON error.
+     # If we get 200, the body is NDJSON stream.
+     
+     # curl can't easily split status code and streaming body without a wrapper.
+     # Let's try to use http_request. If the response is huge, temp file is not ideal,
+     # but for a CLI tool, buffering to a temp file then cat-ing it is "safe" but slow for TTFB.
+     # If we want true streaming, we need a smarter wrapper.
+     
+     # Given the requirement "proper function wrapping the curl call", 
+     # let's stick to using http_request which now handles errors safely.
+     # Streaming to a temp file first adds latency but solves the error handling issue.
+     
+     http_request "POST" "/query" "${payload}" "Content-Type: application/json" "Accept: application/x-ndjson"
   else
      # Accumulated response
      local response
