@@ -138,17 +138,7 @@ http_request() {
   rm -f "${response_file}"
 
   if [[ "${http_code}" -ge 200 && "${http_code}" -lt 300 ]]; then
-      # Success
-      if command -v jq >/dev/null 2>&1; then
-         # Try to pretty print if it looks like JSON
-         if [[ "${response_body}" == "{"* || "${response_body}" == "["* ]]; then
-             echo "${response_body}" | jq .
-         else
-             echo "${response_body}"
-         fi
-      else
-         echo "${response_body}"
-      fi
+      echo "${response_body}"
   else
       # Error
       log_error "HTTP Request failed with status ${http_code}"
@@ -164,12 +154,16 @@ http_request() {
 
 cmd_query() {
   local statement=""
-  local format="json" # Default format (accumulated)
-  
+  local format="json"
+  local query_id=""
+  local session_id=""
+
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --statement) statement="$2"; shift 2 ;;
-      --format) format="$2"; shift 2 ;; # json (accumulated) or ndjson (stream)
+      --statement)  statement="$2";  shift 2 ;;
+      --format)     format="$2";     shift 2 ;;
+      --query-id)   query_id="$2";   shift 2 ;;
+      --session-id) session_id="$2"; shift 2 ;;
       *) log_error "Unknown option: $1"; exit 1 ;;
     esac
   done
@@ -179,42 +173,22 @@ cmd_query() {
     exit 1
   fi
 
-  # Construct payload using jq if available, else manual
+  local payload
   if command -v jq >/dev/null 2>&1; then
-    local payload
-    payload=$(jq -n --arg stmt "$statement" '{statement: $stmt}')
+    payload=$(jq -n \
+      --arg stmt "$statement" \
+      --arg qid  "$query_id" \
+      --arg sid  "$session_id" \
+      '{statement: $stmt} +
+       (if $qid != "" then {query_id: $qid}   else {} end) +
+       (if $sid != "" then {session_id: $sid} else {} end)')
   else
-    # Simple manual escaping (fragile)
     local safe_statement
     safe_statement=$(echo "${statement}" | sed 's/"/\\"/g')
-    local payload="{\"statement\": \"${safe_statement}\"}"
+    payload="{\"statement\": \"${safe_statement}\"}"
   fi
 
-  if [[ "${format}" == "ndjson" ]]; then
-     # For streaming, we output raw lines.
-     # We use http_request logic but modified for streaming to stdout directly,
-     # but we still want to catch error codes.
-     
-     # Re-use http_request but with Accept: application/x-ndjson
-     # However, http_request buffers response to check status code.
-     # For streaming large responses, buffering is bad.
-     # BUT, if we get a 401/400/500, the body is small JSON error.
-     # If we get 200, the body is NDJSON stream.
-     
-     # curl can't easily split status code and streaming body without a wrapper.
-     # Let's try to use http_request. If the response is huge, temp file is not ideal,
-     # but for a CLI tool, buffering to a temp file then cat-ing it is "safe" but slow for TTFB.
-     # If we want true streaming, we need a smarter wrapper.
-     
-     # Given the requirement "proper function wrapping the curl call", 
-     # let's stick to using http_request which now handles errors safely.
-     # Streaming to a temp file first adds latency but solves the error handling issue.
-     
-     http_request "POST" "/query" "${payload}" "Content-Type: application/json" "Accept: application/x-ndjson"
-  else
-     # Accumulated response
-     http_request "POST" "/query" "${payload}" "Content-Type: application/json"
-  fi
+  http_request "POST" "/query" "${payload}" "Content-Type: application/json"
 }
 
 cmd_validate() {
