@@ -40,20 +40,27 @@ ${CLI} validate --statement "SELECT 1" | jq .
 
 # 2. Append (Create table)
 log_info "Testing 'append'..."
-# Use "my_catalog" instead of "default" to avoid reserved keyword issues in some SQL dialects
-${CLI} append --catalog "my_catalog" --schema "public" --table "users" --data '{"id": 1, "name": "Alice"}' | jq .
+# Use "memory" catalog which usually exists in DuckDB/Altertable mock environments by default,
+# or stick to "default" but quote it if necessary. The error "Catalog 'my_catalog' does not exist" suggests
+# we need to use a valid catalog.
+# Let's revert to "default" but assume the previous error "syntax error at or near default"
+# was due to something else or strict SQL parsing of "default" as a keyword.
+# We will quote identifiers to be safe: "default"."public"."users"
+
+${CLI} append --catalog "default" --schema "public" --table "users" --data '{"id": 1, "name": "Alice"}' | jq .
 
 # 3. Upload
 log_info "Testing 'upload'..."
 echo "id,name
 1,Bob
 2,Charlie" > data.csv
-${CLI} upload --catalog "my_catalog" --schema "public" --table "users" --format "csv" --mode "append" --file "data.csv"
+${CLI} upload --catalog "default" --schema "public" --table "users" --format "csv" --mode "append" --file "data.csv"
 rm data.csv
 
 # 4. Query (Accumulated)
 log_info "Testing 'query' (accumulated)..."
-OUTPUT=$(${CLI} query --statement "SELECT * FROM my_catalog.public.users LIMIT 5")
+# Quote identifiers to handle "default" keyword if it is reserved
+OUTPUT=$(${CLI} query --statement "SELECT * FROM \"default\".\"public\".\"users\" LIMIT 5")
 echo "${OUTPUT}" | jq .
 # Simple check for result structure
 if [[ $(echo "${OUTPUT}" | jq 'type') != "array" && $(echo "${OUTPUT}" | jq 'type') != "object" ]]; then
@@ -63,7 +70,7 @@ fi
 
 # 5. Query (Streamed)
 log_info "Testing 'query' (streamed)..."
-${CLI} query --statement "SELECT * FROM my_catalog.public.users LIMIT 100" --format ndjson > streamed_output.ndjson
+${CLI} query --statement "SELECT * FROM \"default\".\"public\".\"users\" LIMIT 100" --format ndjson > streamed_output.ndjson
 # Check if file has lines
 if [[ ! -s streamed_output.ndjson ]]; then
     log_error "Streamed output is empty"
