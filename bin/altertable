@@ -84,6 +84,7 @@ http_request() {
     -X "${method}"
     -H "${auth_header}"
     -H "User-Agent: ${USER_AGENT}"
+    -w "%{http_code}" # Write HTTP status code to stdout at the end
   )
 
   if [[ -n "${data}" ]]; then
@@ -116,20 +117,45 @@ http_request() {
 
   log_debug "Request: ${method} ${url}"
   
-  local response
-  response=$(curl "${curl_opts[@]}" "${url}")
+  # Capture output (body + status code)
+  local response_body
+  local http_code
   
-  # Basic error check (if response is empty or curl failed)
-  if [[ $? -ne 0 ]]; then
-      log_error "Request failed."
+  # Use a temp file for response body to separate it from status code
+  local response_file
+  response_file=$(mktemp)
+  
+  http_code=$(curl "${curl_opts[@]}" -o "${response_file}" "${url}")
+  local curl_exit_code=$?
+
+  if [[ $curl_exit_code -ne 0 ]]; then
+      log_error "Request failed (curl error: ${curl_exit_code})."
+      rm -f "${response_file}"
       exit 1
   fi
+  
+  response_body=$(cat "${response_file}")
+  rm -f "${response_file}"
 
-  # Check for jq and pretty print if available and response is JSON
-  if command -v jq >/dev/null 2>&1 && [[ "${response}" == "{"* || "${response}" == "["* ]]; then
-     echo "${response}" | jq .
+  if [[ "${http_code}" -ge 200 && "${http_code}" -lt 300 ]]; then
+      # Success
+      if command -v jq >/dev/null 2>&1; then
+         # Try to pretty print if it looks like JSON
+         if [[ "${response_body}" == "{"* || "${response_body}" == "["* ]]; then
+             echo "${response_body}" | jq .
+         else
+             echo "${response_body}"
+         fi
+      else
+         echo "${response_body}"
+      fi
   else
-     echo "${response}"
+      # Error
+      log_error "HTTP Request failed with status ${http_code}"
+      if [[ -n "${response_body}" ]]; then
+          log_error "Response: ${response_body}"
+      fi
+      exit 1
   fi
 }
 
