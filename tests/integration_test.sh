@@ -40,19 +40,20 @@ ${CLI} validate --statement "SELECT 1" | jq .
 
 # 2. Append (Create table)
 log_info "Testing 'append'..."
-${CLI} append --catalog "default" --schema "public" --table "users" --data '{"id": 1, "name": "Alice"}' | jq .
+# Use "my_catalog" instead of "default" to avoid reserved keyword issues in some SQL dialects
+${CLI} append --catalog "my_catalog" --schema "public" --table "users" --data '{"id": 1, "name": "Alice"}' | jq .
 
 # 3. Upload
 log_info "Testing 'upload'..."
 echo "id,name
 1,Bob
 2,Charlie" > data.csv
-${CLI} upload --catalog "default" --schema "public" --table "users" --format "csv" --mode "append" --file "data.csv"
+${CLI} upload --catalog "my_catalog" --schema "public" --table "users" --format "csv" --mode "append" --file "data.csv"
 rm data.csv
 
 # 4. Query (Accumulated)
 log_info "Testing 'query' (accumulated)..."
-OUTPUT=$(${CLI} query --statement "SELECT * FROM users LIMIT 5")
+OUTPUT=$(${CLI} query --statement "SELECT * FROM my_catalog.public.users LIMIT 5")
 echo "${OUTPUT}" | jq .
 # Simple check for result structure
 if [[ $(echo "${OUTPUT}" | jq 'type') != "array" && $(echo "${OUTPUT}" | jq 'type') != "object" ]]; then
@@ -62,7 +63,7 @@ fi
 
 # 5. Query (Streamed)
 log_info "Testing 'query' (streamed)..."
-${CLI} query --statement "SELECT * FROM users LIMIT 100" --format ndjson > streamed_output.ndjson
+${CLI} query --statement "SELECT * FROM my_catalog.public.users LIMIT 100" --format ndjson > streamed_output.ndjson
 # Check if file has lines
 if [[ ! -s streamed_output.ndjson ]]; then
     log_error "Streamed output is empty"
