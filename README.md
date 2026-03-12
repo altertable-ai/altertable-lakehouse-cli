@@ -1,84 +1,66 @@
 # Altertable Lakehouse CLI
 
-A Bash-based CLI for the Altertable Lakehouse API.
+You can use this CLI to query and ingest data in Altertable Lakehouse from shell scripts and terminals.
 
-## Requirements
-
-- `bash` (4.0+)
-- `curl`
-- `jq` (optional but recommended for pretty-printing and robust JSON handling)
-
-## Installation
-
-Clone the repository and add the `bin` directory to your PATH, or copy the script:
+## Install
 
 ```bash
 cp bin/altertable /usr/local/bin/altertable
 chmod +x /usr/local/bin/altertable
 ```
 
-## Configuration
-
-Set the following environment variables for authentication:
+## Quick start
 
 ```bash
 export ALTERTABLE_USERNAME="your-username"
 export ALTERTABLE_PASSWORD="your-password"
-# Or use a pre-encoded token
-# export ALTERTABLE_BASIC_AUTH_TOKEN="base64-token"
+altertable query --statement "SELECT 1 AS ok"
 ```
 
-## Usage
+## API reference
 
-### Run a Query
+### `query`
 
-```bash
-altertable query --statement "SELECT * FROM users LIMIT 10"
-```
+`altertable query --statement "<sql>"` executes a SQL query.
 
-### Append Data
+### `append`
 
-```bash
-# Append a single record
-altertable append --catalog my_cat --schema public --table users --data '{"id": 1, "name": "Alice"}'
+`altertable append --catalog <catalog> --schema <schema> --table <table> --data '<json>'` appends JSON rows.
 
-# Append a batch of records
-altertable append --catalog my_cat --schema public --table users --data '[{"id": 2, "name": "Bob"}, {"id": 3, "name": "Charlie"}]'
+### `upload`
 
-# Append from a file
-altertable append --catalog my_cat --schema public --table users --data @records.json
-```
+`altertable upload --catalog <catalog> --schema <schema> --table <table> --format <csv|parquet|...> --mode <append|replace> --file <path>` uploads a file.
 
-### Upload a File
+### `get-query`
 
-```bash
-altertable upload \
-  --catalog my_cat \
-  --schema public \
-  --table users \
-  --format csv \
-  --mode append \
-  --file data.csv
-```
+`altertable get-query <query-id>` returns query execution details.
 
-### Get Query Details
+### `cancel`
 
-```bash
-altertable get-query "query-uuid"
-```
+`altertable cancel --query-id <query-id> --session-id <session-id>` cancels a running query.
 
-### Cancel a Query
+### `validate`
+
+`altertable validate --statement "<sql>"` validates SQL without execution.
+
+## Configuration
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `ALTERTABLE_USERNAME` | `string` | unset | Basic Auth username. |
+| `ALTERTABLE_PASSWORD` | `string` | unset | Basic Auth password. |
+| `ALTERTABLE_BASIC_AUTH_TOKEN` | `string` | unset | Base64 `username:password` token alternative. |
+| `ALTERTABLE_BASE_URL` | `string` | `https://api.altertable.ai` | API base URL override. |
+
+## Development
+
+Prerequisites: Bash 4+, `curl`, `jq`, and `shellcheck`.
 
 ```bash
-altertable cancel --query-id "query-uuid" --session-id "session-uuid"
-```
-
-### Validate SQL
-
-```bash
-altertable validate --statement "SELECT * FROM users"
+bash tests/integration_test.sh
+shellcheck bin/* scripts/*
 ```
 
 ## License
 
-MIT
+See [LICENSE](LICENSE).
