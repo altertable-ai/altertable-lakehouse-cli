@@ -87,6 +87,10 @@ http_request() {
     -w "%{http_code}" # Write HTTP status code to stdout at the end
   )
 
+  if [[ "${DEBUG}" == "true" ]]; then
+    curl_opts+=(-v)
+  fi
+
   if [[ -n "${data}" ]]; then
     if [[ "${data}" == "@"* ]]; then
         # File upload
@@ -403,16 +407,38 @@ if [[ $# -eq 0 ]]; then
   exit 1
 fi
 
+# Parse global options before the command
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --debug) DEBUG="true"; shift ;;
+    *) break ;;
+  esac
+done
+
+if [[ $# -eq 0 ]]; then
+  usage
+  exit 1
+fi
+
 COMMAND="$1"
 shift
 
+# Filter global options from command args
+ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --debug) DEBUG="true" ;;
+    *) ARGS+=("$arg") ;;
+  esac
+done
+
 case "${COMMAND}" in
-  query) cmd_query "$@" ;;
-  validate) cmd_validate "$@" ;;
-  append) cmd_append "$@" ;;
-  upload) cmd_upload "$@" ;;
-  get-query) cmd_get_query "$@" ;;
-  cancel) cmd_cancel "$@" ;;
+  query) cmd_query "${ARGS[@]}" ;;
+  validate) cmd_validate "${ARGS[@]}" ;;
+  append) cmd_append "${ARGS[@]}" ;;
+  upload) cmd_upload "${ARGS[@]}" ;;
+  get-query) cmd_get_query "${ARGS[@]}" ;;
+  cancel) cmd_cancel "${ARGS[@]}" ;;
   help|--help|-h) usage ;;
   version|--version|-v) echo "altertable-lakehouse-cli v${VERSION}";;
   *) log_error "Unknown command: ${COMMAND}"; usage; exit 1 ;;

@@ -91,5 +91,17 @@ COUNT=$(echo "${RESP}" | sed -n '3p' | jq -r '.[0]')
 [[ "${COUNT}" == "3" ]] || fail "append: expected 3 rows after append, got '${COUNT}'"
 pass "query reflects appended row (3 rows total)"
 
+# ── --debug flag ─────────────────────────────────────────────────────────────
+
+STDERR=$("${CLI}" --debug validate --statement "SELECT 1" 2>&1 >/dev/null)
+echo "${STDERR}" | grep -q '\[DEBUG\]' || fail "--debug before command: expected [DEBUG] output on stderr"
+echo "${STDERR}" | grep -q '< HTTP/' || fail "--debug before command: expected verbose curl output on stderr"
+pass "--debug before command produces debug output"
+
+STDERR=$("${CLI}" validate --debug --statement "SELECT 1" 2>&1 >/dev/null)
+echo "${STDERR}" | grep -q '\[DEBUG\]' || fail "--debug after command: expected [DEBUG] output on stderr"
+echo "${STDERR}" | grep -q '< HTTP/' || fail "--debug after command: expected verbose curl output on stderr"
+pass "--debug after command produces debug output"
+
 echo ""
 echo -e "${GREEN}All integration tests passed.${NC}"
