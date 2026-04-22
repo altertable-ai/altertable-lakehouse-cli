@@ -271,22 +271,14 @@ cmd_append() {
       json_content="${data}"
   fi
 
-  # Basic check: starts with [ is Batch, { is Single
   local first_char
   first_char=$(echo "${json_content}" | tr -d '[:space:]' | head -c 1)
 
-  if [[ "${first_char}" == "[" ]]; then
+  if [[ "${first_char}" == "[" || "${first_char}" == "{" ]]; then
      if command -v jq >/dev/null 2>&1; then
-       # Use jq to wrap safely
-       payload=$(echo "${json_content}" | jq -c '{"Batch": .}')
+       payload=$(echo "${json_content}" | jq -c '.')
      else
-       payload="{\"Batch\": ${json_content}}"
-     fi
-  elif [[ "${first_char}" == "{" ]]; then
-     if command -v jq >/dev/null 2>&1; then
-       payload=$(echo "${json_content}" | jq -c '{"Single": .}')
-     else
-       payload="{\"Single\": ${json_content}}"
+       payload="${json_content}"
      fi
   else
      log_error "Data must be a JSON object or array."
