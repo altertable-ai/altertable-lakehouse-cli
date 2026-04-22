@@ -8,12 +8,8 @@ export ALTERTABLE_API_BASE="${API_BASE}"
 export ALTERTABLE_USERNAME="testuser"
 export ALTERTABLE_PASSWORD="testpass"
 
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-pass() { echo -e "${GREEN}PASS${NC} $1"; }
-fail() { echo -e "${RED}FAIL${NC} $1"; exit 1; }
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/utils.sh"
 
 # ── validate ──────────────────────────────────────────────────────────────────
 
@@ -78,18 +74,45 @@ RESP=$("${CLI}" cancel --query-id "${QID2}" --session-id "wrong-session")
 [[ $(echo "${RESP}" | jq -r '.cancelled') == "false" ]] || fail "cancel: expected cancelled=false for wrong session"
 pass "cancel returns cancelled=false for wrong session_id"
 
-# ── append ────────────────────────────────────────────────────────────────────
+# ── append (single datum) ─────────────────────────────────────────────────────
 
-RESP=$("${CLI}" append \
+setup_curl_spy
+
+run_with_curl_capture "${CLI}" append \
   --catalog memory --schema main --table cli_test \
-  --data '{"id": 3, "name": "Charlie"}')
-[[ $(echo "${RESP}" | jq -r '.ok') == "true" ]] || fail "append: expected ok=true"
-pass "append inserts a row and returns ok=true"
+  --data '{"id": 3, "name": "Charlie"}'
 
-RESP=$("${CLI}" query --statement "SELECT COUNT(*) AS n FROM cli_test")
+assert_response_json_eq "append single: ok field" '.ok' 'true'
+pass "append single: returns ok=true"
+
+assert_curl_payload_not_contains \
+  "append single: payload must not wrap data in 'Single'" '"Single"'
+pass "append single: payload is raw JSON without Single wrapper"
+
+RESP=$("${CLI}" query --statement "SELECT COUNT(*) AS n FROM cli_test" 2>/dev/null)
 COUNT=$(echo "${RESP}" | sed -n '3p' | jq -r '.[0]')
-[[ "${COUNT}" == "3" ]] || fail "append: expected 3 rows after append, got '${COUNT}'"
+[[ "${COUNT}" == "3" ]] || fail "append single: expected 3 rows after append, got '${COUNT}'"
 pass "query reflects appended row (3 rows total)"
+
+# ── append (batch) ────────────────────────────────────────────────────────────
+
+run_with_curl_capture "${CLI}" append \
+  --catalog memory --schema main --table cli_test \
+  --data '[{"id": 4, "name": "Delta"}, {"id": 5, "name": "Echo"}]'
+
+assert_response_json_eq "append batch: ok field" '.ok' 'true'
+pass "append batch: returns ok=true"
+
+assert_curl_payload_not_contains \
+  "append batch: payload must not wrap data in 'Batch'" '"Batch"'
+pass "append batch: payload is raw JSON without Batch wrapper"
+
+RESP=$("${CLI}" query --statement "SELECT COUNT(*) AS n FROM cli_test" 2>/dev/null)
+COUNT=$(echo "${RESP}" | sed -n '3p' | jq -r '.[0]')
+[[ "${COUNT}" == "5" ]] || fail "append batch: expected 5 rows after batch append, got '${COUNT}'"
+pass "query reflects batch-appended rows (5 rows total)"
+
+teardown_curl_spy
 
 # ── --debug flag ─────────────────────────────────────────────────────────────
 
