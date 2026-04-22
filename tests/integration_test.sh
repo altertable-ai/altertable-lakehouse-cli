@@ -85,9 +85,9 @@ run_with_curl_capture "${CLI}" append \
 assert_response_json_eq "append single: ok field" '.ok' 'true'
 pass "append single: returns ok=true"
 
-assert_curl_payload_not_contains \
-  "append single: payload must not wrap data in 'Single'" '"Single"'
-pass "append single: payload is raw JSON without Single wrapper"
+assert_curl_payload_eq \
+  "append single: payload is raw JSON" '{"id": 3, "name": "Charlie"}'
+pass "append single: payload is raw JSON"
 
 RESP=$("${CLI}" query --statement "SELECT COUNT(*) AS n FROM cli_test" 2>/dev/null)
 COUNT=$(echo "${RESP}" | sed -n '3p' | jq -r '.[0]')
@@ -103,9 +103,9 @@ run_with_curl_capture "${CLI}" append \
 assert_response_json_eq "append batch: ok field" '.ok' 'true'
 pass "append batch: returns ok=true"
 
-assert_curl_payload_not_contains \
-  "append batch: payload must not wrap data in 'Batch'" '"Batch"'
-pass "append batch: payload is raw JSON without Batch wrapper"
+assert_curl_payload_eq \
+  "append batch: payload is raw JSON" '[{"id": 4, "name": "Delta"}, {"id": 5, "name": "Echo"}]'
+pass "append batch: payload is raw JSON"
 
 RESP=$("${CLI}" query --statement "SELECT COUNT(*) AS n FROM cli_test" 2>/dev/null)
 COUNT=$(echo "${RESP}" | sed -n '3p' | jq -r '.[0]')

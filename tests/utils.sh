@@ -97,6 +97,15 @@ assert_curl_payload_not_contains() {
   fi
 }
 
+assert_curl_payload_eq() {
+  local label="$1"
+  local expected="$2"
+  local actual
+  actual=$(echo "${CURL_PAYLOAD}" | jq -cS '.')
+  expected=$(echo "${expected}" | jq -cS '.')
+  [[ "${actual}" == "${expected}" ]] || fail "${label}: expected '${expected}', got '${actual}'"
+}
+
 # ---------------------------------------------------------------------------
 # Assertions on the response
 # ---------------------------------------------------------------------------
