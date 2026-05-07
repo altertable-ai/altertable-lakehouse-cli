@@ -1,11 +1,14 @@
 {
-    "packages": {
-      ".": {
-        "release-type": "simple",
-        "package-name": "altertable-lakehouse-cli",
-        "extra-files": [
-          "bin/altertable"
-        ]
-      }
+  "packages": {
+    ".": {
+      "release-type": "simple",
+      "package-name": "altertable-lakehouse-cli",
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "bin/altertable"
+        }
+      ]
     }
+  }
 }
