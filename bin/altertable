@@ -14,6 +14,8 @@ altertable-lakehouse-cli v${VERSION}
 
 Usage: altertable <command> [options]
 
+Use altertable <command> --help for command-specific options.
+
 Commands:
   query     Run a SQL query
   append    Append data to a table
@@ -32,6 +34,100 @@ Global Options:
   -h, --help    Show help
   -v, --version Show version
   --debug       Enable debug output
+
+EOF
+}
+
+usage_query() {
+  cat <<EOF
+Run a SQL query against the lakehouse.
+
+Usage: altertable query [options]
+
+Options:
+  --statement <sql>    SQL statement to run (required)
+  --format <fmt>       Output format (default: json)
+  --query-id <uuid>    Optional stable query id
+  --session-id <uuid>  Optional session id
+  -h, --help           Show this help
+
+EOF
+}
+
+usage_validate() {
+  cat <<EOF
+Validate a SQL statement without executing it.
+
+Usage: altertable validate [options]
+
+Options:
+  --statement <sql>  SQL to validate (required)
+  -h, --help         Show this help
+
+EOF
+}
+
+usage_append() {
+  cat <<EOF
+Append JSON rows to a table.
+
+Usage: altertable append [options]
+
+Options:
+  --catalog <name>   Catalog name (required)
+  --schema <name>    Schema name (required)
+  --table <name>     Table name (required)
+  --data <json|@path> JSON object, array, or @file (required)
+  -h, --help         Show this help
+
+EOF
+}
+
+usage_upload() {
+  cat <<EOF
+Upload a file to create or update a table.
+
+Usage: altertable upload [options]
+
+Options:
+  --catalog <name>       Catalog name (required)
+  --schema <name>        Schema name (required)
+  --table <name>         Table name (required)
+  --format <fmt>         File format, e.g. csv (required)
+  --mode <mode>          overwrite or upsert (required)
+  --primary-key <cols>   Required when --mode is upsert (comma-separated)
+  --file <path>          Local file to upload (required)
+  -h, --help             Show this help
+
+EOF
+}
+
+usage_get_query() {
+  cat <<EOF
+Fetch metadata for a completed or running query.
+
+Usage: altertable get-query <query-uuid>
+       altertable get-query --help
+
+Arguments:
+  <query-uuid>  Query id returned by the API
+
+Options:
+  -h, --help    Show this help
+
+EOF
+}
+
+usage_cancel() {
+  cat <<EOF
+Cancel a running query.
+
+Usage: altertable cancel [options]
+
+Options:
+  --query-id <uuid>    Query id to cancel (required)
+  --session-id <uuid>  Session id that owns the query (required)
+  -h, --help           Show this help
 
 EOF
 }
@@ -168,12 +264,14 @@ cmd_query() {
       --format)     format="$2";     shift 2 ;;
       --query-id)   query_id="$2";   shift 2 ;;
       --session-id) session_id="$2"; shift 2 ;;
-      *) log_error "Unknown option: $1"; exit 1 ;;
+      -h|--help)    usage_query; exit 0 ;;
+      *) log_error "Unknown option: $1"; usage_query >&2; exit 1 ;;
     esac
   done
 
   if [[ -z "${statement}" ]]; then
     log_error "Missing required argument: --statement"
+    usage_query >&2
     exit 1
   fi
 
@@ -201,12 +299,14 @@ cmd_validate() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --statement) statement="$2"; shift 2 ;;
-      *) log_error "Unknown option: $1"; exit 1 ;;
+      -h|--help)   usage_validate; exit 0 ;;
+      *) log_error "Unknown option: $1"; usage_validate >&2; exit 1 ;;
     esac
   done
 
   if [[ -z "${statement}" ]]; then
     log_error "Missing required argument: --statement"
+    usage_validate >&2
     exit 1
   fi
 
@@ -247,12 +347,14 @@ cmd_append() {
       --schema) schema="$2"; shift 2 ;;
       --table) table="$2"; shift 2 ;;
       --data) data="$2"; shift 2 ;;
-      *) log_error "Unknown option: $1"; exit 1 ;;
+      -h|--help) usage_append; exit 0 ;;
+      *) log_error "Unknown option: $1"; usage_append >&2; exit 1 ;;
     esac
   done
 
   if [[ -z "${catalog}" || -z "${schema}" || -z "${table}" || -z "${data}" ]]; then
-    log_error "Missing required arguments. Need --catalog, --schema, --table, and --data."
+    log_error "Missing required arguments: --catalog, --schema, --table, and --data."
+    usage_append >&2
     exit 1
   fi
   
@@ -315,17 +417,20 @@ cmd_upload() {
       --mode) mode="$2"; shift 2 ;;
       --primary-key) primary_key="$2"; shift 2 ;;
       --file) file="$2"; shift 2 ;;
-      *) log_error "Unknown option: $1"; exit 1 ;;
+      -h|--help) usage_upload; exit 0 ;;
+      *) log_error "Unknown option: $1"; usage_upload >&2; exit 1 ;;
     esac
   done
 
   if [[ -z "${catalog}" || -z "${schema}" || -z "${table}" || -z "${format}" || -z "${mode}" || -z "${file}" ]]; then
-      log_error "Missing required arguments."
+      log_error "Missing required arguments: --catalog, --schema, --table, --format, --mode, and --file."
+      usage_upload >&2
       exit 1
   fi
   
   if [[ "${mode}" == "upsert" && -z "${primary_key}" ]]; then
-      log_error "primary-key is required when mode is upsert."
+      log_error "--primary-key is required when --mode is upsert."
+      usage_upload >&2
       exit 1
   fi
 
@@ -357,9 +462,24 @@ cmd_upload() {
 }
 
 cmd_get_query() {
-    local query_id="$1"
+    local query_id=""
+
+    if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+        usage_get_query
+        exit 0
+    fi
+
+    query_id="${1:-}"
     if [[ -z "${query_id}" ]]; then
-        log_error "Missing query_id"
+        log_error "Missing query id."
+        usage_get_query >&2
+        exit 1
+    fi
+    shift
+
+    if [[ $# -gt 0 ]]; then
+        log_error "Unexpected argument: $1"
+        usage_get_query >&2
         exit 1
     fi
     local query_id_enc
@@ -375,12 +495,14 @@ cmd_cancel() {
       case "$1" in
         --query-id) query_id="$2"; shift 2 ;;
         --session-id) session_id="$2"; shift 2 ;;
-        *) log_error "Unknown option: $1"; exit 1 ;;
+        -h|--help) usage_cancel; exit 0 ;;
+        *) log_error "Unknown option: $1"; usage_cancel >&2; exit 1 ;;
       esac
     done
 
     if [[ -z "${query_id}" || -z "${session_id}" ]]; then
-        log_error "Missing required arguments: --query-id and --session-id"
+        log_error "Missing required arguments: --query-id and --session-id."
+        usage_cancel >&2
         exit 1
     fi
     
