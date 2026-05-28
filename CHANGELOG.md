@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0](https://github.com/altertable-ai/altertable-lakehouse-cli/compare/altertable-lakehouse-cli-v0.3.0...altertable-lakehouse-cli-v0.4.0) (2026-05-28)
+
+
+### Features
+
+* upload CLI to release ([#25](https://github.com/altertable-ai/altertable-lakehouse-cli/issues/25)) ([f3d18d3](https://github.com/altertable-ai/altertable-lakehouse-cli/commit/f3d18d3280cd672af009ad7d19a33c2f2f8e0fa5))
+
 ## [0.3.0](https://github.com/altertable-ai/altertable-lakehouse-cli/compare/altertable-lakehouse-cli-v0.2.1...altertable-lakehouse-cli-v0.3.0) (2026-05-07)
 
 
