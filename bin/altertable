@@ -4,7 +4,7 @@
 
 set -e
 
-VERSION="0.3.0" # x-release-please-version
+VERSION="0.4.0" # x-release-please-version
 API_BASE="https://api.altertable.ai"
 USER_AGENT="altertable-lakehouse-cli/${VERSION}"
 
