@@ -22,8 +22,8 @@ chmod +x /usr/local/bin/altertable
 Set the following environment variables for authentication:
 
 ```bash
-export ALTERTABLE_USERNAME="your-username"
-export ALTERTABLE_PASSWORD="your-password"
+export ALTERTABLE_LAKEHOUSE_USERNAME="your_lakehouse_username"
+export ALTERTABLE_LAKEHOUSE_PASSWORD="your_lakehouse_password"
 # Or use a pre-encoded token
 # export ALTERTABLE_BASIC_AUTH_TOKEN="base64-token"
 ```

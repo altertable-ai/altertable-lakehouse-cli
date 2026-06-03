@@ -5,8 +5,8 @@ API_BASE="http://0.0.0.0:15000"
 CLI="./bin/altertable"
 
 export ALTERTABLE_API_BASE="${API_BASE}"
-export ALTERTABLE_USERNAME="testuser"
-export ALTERTABLE_PASSWORD="testpass"
+export ALTERTABLE_LAKEHOUSE_USERNAME="testuser"
+export ALTERTABLE_LAKEHOUSE_PASSWORD="testpass"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/utils.sh"
