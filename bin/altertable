@@ -25,8 +25,8 @@ Commands:
   validate  Validate a SQL statement
 
 Environment Variables:
-  ALTERTABLE_USERNAME           API Username
-  ALTERTABLE_PASSWORD           API Password
+  ALTERTABLE_LAKEHOUSE_USERNAME Lakehouse Username
+  ALTERTABLE_LAKEHOUSE_PASSWORD Lakehouse Password
   ALTERTABLE_BASIC_AUTH_TOKEN   Pre-encoded Basic Auth Token (optional)
   ALTERTABLE_API_BASE           API Base URL (default: https://api.altertable.ai)
 
@@ -154,13 +154,13 @@ check_deps() {
 get_auth_header() {
   if [[ -n "${ALTERTABLE_BASIC_AUTH_TOKEN}" ]]; then
     echo "Authorization: Basic ${ALTERTABLE_BASIC_AUTH_TOKEN}"
-  elif [[ -n "${ALTERTABLE_USERNAME}" && -n "${ALTERTABLE_PASSWORD}" ]]; then
+  elif [[ -n "${ALTERTABLE_LAKEHOUSE_USERNAME}" && -n "${ALTERTABLE_LAKEHOUSE_PASSWORD}" ]]; then
     # Create base64 token manually using openssl or base64
     local token
-    token=$(echo -n "${ALTERTABLE_USERNAME}:${ALTERTABLE_PASSWORD}" | base64 | tr -d '\n')
+    token=$(echo -n "${ALTERTABLE_LAKEHOUSE_USERNAME}:${ALTERTABLE_LAKEHOUSE_PASSWORD}" | base64 | tr -d '\n')
     echo "Authorization: Basic ${token}"
   else
-    log_error "Missing authentication. Set ALTERTABLE_USERNAME/PASSWORD or ALTERTABLE_BASIC_AUTH_TOKEN."
+    log_error "Missing authentication. Set ALTERTABLE_LAKEHOUSE_USERNAME/PASSWORD or ALTERTABLE_BASIC_AUTH_TOKEN."
     exit 1
   fi
 }
