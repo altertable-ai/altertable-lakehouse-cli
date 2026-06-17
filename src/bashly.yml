@@ -10,7 +10,17 @@ environment_variables:
 - name: altertable_basic_auth_token
   help: Pre-encoded Basic Auth Token (optional)
 - name: altertable_api_base
-  help: "API Base URL (default: https://api.altertable.ai)"
+  help: "Data plane API Base URL (default: https://api.altertable.ai)"
+- name: altertable_app_base
+  help: "Management API Base URL (default: https://app.altertable.ai)"
+- name: altertable_api_key
+  help: Management API key (overrides stored value)
+- name: altertable_env
+  help: Default environment for management operations
+- name: altertable_config_home
+  help: "Config/credentials directory (default: $XDG_CONFIG_HOME/altertable)"
+- name: altertable_secret_backend
+  help: "Force secret storage backend: keychain | file (default: auto-detect)"
 
 flags:
 - &debug_flag
@@ -119,4 +129,62 @@ commands:
     arg: uuid
     help: Session id that owns the query
     required: true
+  - *debug_flag
+
+- name: configure
+  help: Configure and securely store credentials and settings.
+  examples:
+  - altertable configure
+  - altertable configure --user u_blabla --password s_llll
+  - altertable configure --api-key atm_xxxx --env production
+  - altertable configure --list
+  - altertable configure --remove --env production
+  flags:
+  - long: --user
+    arg: username
+    help: Lakehouse username (global)
+  - long: --password
+    arg: password
+    help: Lakehouse password (global)
+    conflicts: [--password-stdin]
+  - long: --password-stdin
+    help: Read the lakehouse password from stdin
+    conflicts: [--password, --api-key-stdin]
+  - long: --basic-token
+    arg: token
+    help: Pre-encoded HTTP Basic token (alternative to user/password)
+  - long: --api-key
+    arg: key
+    help: Management API key for the --env environment
+    needs: [--env]
+    conflicts: [--api-key-stdin]
+  - long: --api-key-stdin
+    help: Read the management API key from stdin
+    needs: [--env]
+    conflicts: [--api-key, --password-stdin]
+  - long: --env
+    arg: name
+    help: Target environment (management API keys are per-environment)
+  - long: --default
+    help: Mark the --env environment as the default
+    needs: [--env]
+  - long: --api-base
+    arg: url
+    help: Override the data-plane base URL
+  - long: --app-base
+    arg: url
+    help: Override the management base URL
+  - long: --list
+    help: Show stored configuration (secrets masked)
+  - long: --remove
+    help: Remove stored credentials (with --env, --lakehouse, or --all)
+  - long: --lakehouse
+    help: With --remove, remove the global lakehouse credential
+    needs: [--remove]
+  - long: --all
+    help: With --remove, remove all stored credentials and config
+    needs: [--remove]
+  - long: --yes
+    short: -y
+    help: Do not prompt for confirmation
   - *debug_flag

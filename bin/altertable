@@ -32,6 +32,7 @@ altertable_usage() {
   printf "  %s   Upload a file to create or update a table.\n" "upload   "
   printf "  %s   Fetch metadata for a completed or running query.\n" "get-query"
   printf "  %s   Cancel a running query.\n" "cancel   "
+  printf "  %s   Configure and securely store credentials and settings.\n" "configure"
   echo
 
   # :command.long_usage
@@ -73,7 +74,32 @@ altertable_usage() {
 
     # :environment_variable.usage
     printf "  %s\n" "ALTERTABLE_API_BASE"
-    printf "    API Base URL (default: https://api.altertable.ai)\n"
+    printf "    Data plane API Base URL (default: https://api.altertable.ai)\n"
+    echo
+
+    # :environment_variable.usage
+    printf "  %s\n" "ALTERTABLE_APP_BASE"
+    printf "    Management API Base URL (default: https://app.altertable.ai)\n"
+    echo
+
+    # :environment_variable.usage
+    printf "  %s\n" "ALTERTABLE_API_KEY"
+    printf "    Management API key (overrides stored value)\n"
+    echo
+
+    # :environment_variable.usage
+    printf "  %s\n" "ALTERTABLE_ENV"
+    printf "    Default environment for management operations\n"
+    echo
+
+    # :environment_variable.usage
+    printf "  %s\n" "ALTERTABLE_CONFIG_HOME"
+    printf "    Config/credentials directory (default: $XDG_CONFIG_HOME/altertable)\n"
+    echo
+
+    # :environment_variable.usage
+    printf "  %s\n" "ALTERTABLE_SECRET_BACKEND"
+    printf "    Force secret storage backend: keychain | file (default: auto-detect)\n"
     echo
 
   fi
@@ -346,6 +372,127 @@ altertable_cancel_usage() {
   fi
 }
 
+# :command.usage
+altertable_configure_usage() {
+  printf "altertable configure - Configure and securely store credentials and settings.\n\n"
+
+  printf "%s\n" "Usage:"
+  printf "  altertable configure [OPTIONS]\n"
+  printf "  altertable configure --help | -h\n"
+  echo
+
+  # :command.long_usage
+  if [[ -n "$long_usage" ]]; then
+    # :command.usage_options
+    printf "%s\n" "Options:"
+
+    # :command.usage_flags
+    # :flag.usage
+    printf "  %s\n" "--user USERNAME"
+    printf "    Lakehouse username (global)\n"
+    echo
+
+    # :flag.usage
+    printf "  %s\n" "--password PASSWORD"
+    printf "    Lakehouse password (global)\n"
+    printf "    %s\n" "Conflicts: --password-stdin"
+    echo
+
+    # :flag.usage
+    printf "  %s\n" "--password-stdin"
+    printf "    Read the lakehouse password from stdin\n"
+    printf "    %s\n" "Conflicts: --password, --api-key-stdin"
+    echo
+
+    # :flag.usage
+    printf "  %s\n" "--basic-token TOKEN"
+    printf "    Pre-encoded HTTP Basic token (alternative to user/password)\n"
+    echo
+
+    # :flag.usage
+    printf "  %s\n" "--api-key KEY"
+    printf "    Management API key for the --env environment\n"
+    printf "    %s\n" "Needs: --env"
+    printf "    %s\n" "Conflicts: --api-key-stdin"
+    echo
+
+    # :flag.usage
+    printf "  %s\n" "--api-key-stdin"
+    printf "    Read the management API key from stdin\n"
+    printf "    %s\n" "Needs: --env"
+    printf "    %s\n" "Conflicts: --api-key, --password-stdin"
+    echo
+
+    # :flag.usage
+    printf "  %s\n" "--env NAME"
+    printf "    Target environment (management API keys are per-environment)\n"
+    echo
+
+    # :flag.usage
+    printf "  %s\n" "--default"
+    printf "    Mark the --env environment as the default\n"
+    printf "    %s\n" "Needs: --env"
+    echo
+
+    # :flag.usage
+    printf "  %s\n" "--api-base URL"
+    printf "    Override the data-plane base URL\n"
+    echo
+
+    # :flag.usage
+    printf "  %s\n" "--app-base URL"
+    printf "    Override the management base URL\n"
+    echo
+
+    # :flag.usage
+    printf "  %s\n" "--list"
+    printf "    Show stored configuration (secrets masked)\n"
+    echo
+
+    # :flag.usage
+    printf "  %s\n" "--remove"
+    printf "    Remove stored credentials (with --env, --lakehouse, or --all)\n"
+    echo
+
+    # :flag.usage
+    printf "  %s\n" "--lakehouse"
+    printf "    With --remove, remove the global lakehouse credential\n"
+    printf "    %s\n" "Needs: --remove"
+    echo
+
+    # :flag.usage
+    printf "  %s\n" "--all"
+    printf "    With --remove, remove all stored credentials and config\n"
+    printf "    %s\n" "Needs: --remove"
+    echo
+
+    # :flag.usage
+    printf "  %s\n" "--yes, -y"
+    printf "    Do not prompt for confirmation\n"
+    echo
+
+    # :flag.usage
+    printf "  %s\n" "--debug"
+    printf "    Enable debug output\n"
+    echo
+
+    # :command.usage_fixed_flags
+    printf "  %s\n" "--help, -h"
+    printf "    Show this help\n"
+    echo
+
+    # :command.usage_examples
+    printf "%s\n" "Examples:"
+    printf "  altertable configure\n"
+    printf "  altertable configure --user u_blabla --password s_llll\n"
+    printf "  altertable configure --api-key atm_xxxx --env production\n"
+    printf "  altertable configure --list\n"
+    printf "  altertable configure --remove --env production\n"
+    echo
+
+  fi
+}
+
 # :command.normalize_input
 # :command.normalize_input_function
 normalize_input() {
@@ -425,6 +572,143 @@ get_auth_header() {
     exit 1
   fi
 }
+
+# src/lib/config.sh
+# Non-secret configuration: a flat "key=value" file plus base-URL resolution.
+
+trim() { printf '%s' "$1" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'; }
+
+config_dir() { echo "${ALTERTABLE_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/altertable}"; }
+config_file() { echo "$(config_dir)/config"; }
+credentials_file() { echo "$(config_dir)/credentials"; }
+
+# Flat "key=value" helpers (tolerant of surrounding whitespace, comments preserved).
+kv_get() {
+  local file="$1" key="$2" line k
+  [[ -f "$file" ]] || return 0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in ''|'#'*) continue ;; esac
+    k="$(trim "${line%%=*}")"
+    if [[ "$k" == "$key" ]]; then
+      trim "${line#*=}"
+      printf '\n'
+      return 0
+    fi
+  done < "$file"
+  return 0
+}
+
+kv_set() {
+  local file="$1" key="$2" value="$3" tmp line k found=0
+  mkdir -p "$(dirname "$file")"
+  tmp="$(mktemp)"
+  if [[ -f "$file" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      k="$(trim "${line%%=*}")"
+      if [[ "$k" == "$key" ]]; then
+        printf '%s=%s\n' "$key" "$value" >> "$tmp"
+        found=1
+      else
+        printf '%s\n' "$line" >> "$tmp"
+      fi
+    done < "$file"
+  fi
+  [[ "$found" -eq 0 ]] && printf '%s=%s\n' "$key" "$value" >> "$tmp"
+  mv "$tmp" "$file"
+}
+
+kv_unset() {
+  local file="$1" key="$2" tmp line k
+  [[ -f "$file" ]] || return 0
+  tmp="$(mktemp)"
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    k="$(trim "${line%%=*}")"
+    [[ "$k" == "$key" ]] && continue
+    printf '%s\n' "$line" >> "$tmp"
+  done < "$file"
+  mv "$tmp" "$file"
+}
+
+config_get() { kv_get "$(config_file)" "$1"; }
+config_set() { local f; f="$(config_file)"; kv_set "$f" "$1" "$2"; chmod 600 "$f" 2>/dev/null || true; }
+config_unset() { kv_unset "$(config_file)" "$1"; }
+
+# The comma-separated "environments" list (one env per line on output).
+config_envs() {
+  local raw; raw="$(config_get environments)"
+  [[ -z "$raw" ]] && return 0
+  printf '%s\n' "$raw" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' || true
+}
+config_env_exists() {
+  local target="$1" e
+  while IFS= read -r e; do [[ "$e" == "$target" ]] && return 0; done < <(config_envs)
+  return 1
+}
+config_add_env() {
+  local env="$1" joined
+  config_env_exists "$env" && return 0
+  joined="$( { config_envs; printf '%s\n' "$env"; } | grep -v '^$' | paste -sd, - || true)"
+  config_set environments "$joined"
+}
+config_remove_env_from_list() {
+  local env="$1" joined
+  joined="$(config_envs | grep -vx "$env" | paste -sd, - || true)"
+  if [[ -z "$joined" ]]; then config_unset environments; else config_set environments "$joined"; fi
+}
+
+resolve_api_base() {
+  if [[ -n "${ALTERTABLE_API_BASE:-}" ]]; then echo "${ALTERTABLE_API_BASE}"; return 0; fi
+  local c; c="$(config_get api_base)"
+  if [[ -n "$c" ]]; then echo "$c"; return 0; fi
+  echo "https://api.altertable.ai"
+}
+resolve_app_base() {
+  if [[ -n "${ALTERTABLE_APP_BASE:-}" ]]; then echo "${ALTERTABLE_APP_BASE}"; return 0; fi
+  local c; c="$(config_get app_base)"
+  if [[ -n "$c" ]]; then echo "$c"; return 0; fi
+  echo "https://app.altertable.ai"
+}
+
+# src/lib/configure.sh
+# Operations behind `altertable configure`. These read the global `args` array
+# (set by bashly), consistent with the other libraries.
+
+configure_run_set() {
+  local user="${args[--user]:-}"
+  local password="${args[--password]:-}"
+  local basic_token="${args[--basic-token]:-}"
+  local api_key="${args[--api-key]:-}"
+  local api_base="${args[--api-base]:-}"
+  local app_base="${args[--app-base]:-}"
+  local env="${args[--env]:-}"
+
+  # === stdin + --env validation: see Task 3 ===
+
+  # Interactive when nothing was provided.
+  if [[ -z "$user" && -z "$password" && -z "$basic_token" && -z "$api_key" \
+        && -z "$api_base" && -z "$app_base" && -z "$env" \
+        && -z "${args[--password-stdin]:-}" && -z "${args[--api-key-stdin]:-}" \
+        && -z "${args[--default]:-}" ]]; then
+    configure_run_interactive
+    return
+  fi
+
+  # Lakehouse credentials (global).
+  [[ -n "$user" ]] && config_set user "$user"
+  [[ -n "$password" ]] && secret_set "lakehouse/password" "$password"
+  [[ -n "$basic_token" ]] && secret_set "lakehouse/basic-token" "$basic_token"
+  [[ -n "$api_base" ]] && config_set api_base "$api_base"
+  [[ -n "$app_base" ]] && config_set app_base "$app_base"
+
+  # === management API key: see Task 2 ===
+
+  printf 'Configuration updated.\n' >&2
+}
+
+# Stubs replaced in later tasks.
+configure_run_interactive() { log_error "interactive configure not yet available"; exit 1; }
+configure_run_list() { log_error "configure --list not yet available"; exit 1; }
+configure_run_remove() { log_error "configure --remove not yet available"; exit 1; }
 
 # src/lib/encode.sh
 urlencode() {
@@ -526,6 +810,82 @@ log_debug() {
 
 log_error() {
   echo "[ERROR] $1" >&2
+}
+
+log_warn() {
+  echo "[WARN] $1" >&2
+}
+
+# src/lib/secret.sh
+# Secret storage: OS keychain when available, else a 0600 fallback file.
+# Accounts: lakehouse/password, lakehouse/basic-token, apikey/<env>. Service: "altertable".
+
+_warn_file_backend_once() {
+  if [[ -z "${_FILE_BACKEND_WARNED:-}" ]]; then
+    log_warn "No OS keychain found; storing secrets at $(credentials_file) (chmod 600). Prefer environment variables in CI."
+    _FILE_BACKEND_WARNED=1
+  fi
+}
+
+secret_backend() {
+  local override="${ALTERTABLE_SECRET_BACKEND:-}"
+  case "$override" in
+    file) echo "file"; return 0 ;;
+  esac
+  if [[ "$(uname)" == "Darwin" ]] && command -v security >/dev/null 2>&1; then
+    echo "macos"; return 0
+  elif command -v secret-tool >/dev/null 2>&1; then
+    echo "linux"; return 0
+  fi
+  if [[ "$override" == "keychain" ]]; then
+    log_error "ALTERTABLE_SECRET_BACKEND=keychain but no OS keychain tool was found."
+    exit 1
+  fi
+  echo "file"
+}
+
+secret_set() {
+  local account="$1" value="$2" f
+  case "$(secret_backend)" in
+    macos) security add-generic-password -U -s "altertable" -a "$account" -w "$value" >/dev/null 2>&1 \
+             || { log_error "Failed to store secret in macOS keychain ($account)."; exit 1; } ;;
+    linux) printf '%s' "$value" | secret-tool store --label="altertable $account" service "altertable" account "$account" \
+             || { log_error "Failed to store secret via secret-tool ($account)."; exit 1; } ;;
+    file)
+      f="$(credentials_file)"
+      kv_set "$f" "$account" "$value"
+      chmod 600 "$f"
+      _warn_file_backend_once
+      ;;
+  esac
+}
+
+secret_get() {
+  local account="$1" val=""
+  case "$(secret_backend)" in
+    macos) val="$(security find-generic-password -s "altertable" -a "$account" -w 2>/dev/null || true)" ;;
+    linux) val="$(secret-tool lookup service "altertable" account "$account" 2>/dev/null || true)" ;;
+    file)  val="$(kv_get "$(credentials_file)" "$account")" ;;
+  esac
+  printf '%s' "$val"
+}
+
+secret_exists() {
+  local account="$1"
+  case "$(secret_backend)" in
+    macos) security find-generic-password -s "altertable" -a "$account" >/dev/null 2>&1 ;;
+    linux) secret-tool lookup service "altertable" account "$account" >/dev/null 2>&1 ;;
+    file)  [[ -n "$(kv_get "$(credentials_file)" "$account")" ]] ;;
+  esac
+}
+
+secret_delete() {
+  local account="$1"
+  case "$(secret_backend)" in
+    macos) security delete-generic-password -s "altertable" -a "$account" >/dev/null 2>&1 || true ;;
+    linux) secret-tool clear service "altertable" account "$account" >/dev/null 2>&1 || true ;;
+    file)  kv_unset "$(credentials_file)" "$account" ;;
+  esac
 }
 
 # :command.command_functions
@@ -683,6 +1043,21 @@ altertable_cancel_command() {
 
 }
 
+# :command.function
+altertable_configure_command() {
+
+  # src/configure_command.sh
+  # Dispatch configure modes. Behavior lives in src/lib/configure.sh.
+  if [[ -n "${args[--list]:-}" ]]; then
+    configure_run_list
+  elif [[ -n "${args[--remove]:-}" ]]; then
+    configure_run_remove
+  else
+    configure_run_set
+  fi
+
+}
+
 # :command.parse_requirements
 parse_requirements() {
   local key
@@ -723,6 +1098,11 @@ parse_requirements() {
   env_var_names+=("ALTERTABLE_LAKEHOUSE_PASSWORD")
   env_var_names+=("ALTERTABLE_BASIC_AUTH_TOKEN")
   env_var_names+=("ALTERTABLE_API_BASE")
+  env_var_names+=("ALTERTABLE_APP_BASE")
+  env_var_names+=("ALTERTABLE_API_KEY")
+  env_var_names+=("ALTERTABLE_ENV")
+  env_var_names+=("ALTERTABLE_CONFIG_HOME")
+  env_var_names+=("ALTERTABLE_SECRET_BACKEND")
 
   # :command.command_filter
   action=${1:-}
@@ -769,6 +1149,13 @@ parse_requirements() {
       action="cancel"
       shift
       altertable_cancel_parse_requirements "$@"
+      shift $#
+      ;;
+
+    configure)
+      action="configure"
+      shift
+      altertable_configure_parse_requirements "$@"
       shift $#
       ;;
 
@@ -1466,6 +1853,277 @@ altertable_cancel_parse_requirements() {
 
 }
 
+# :command.parse_requirements
+altertable_configure_parse_requirements() {
+  local key
+
+  # :command.fixed_flags_filter
+  while [[ $# -gt 0 ]]; do
+    key="$1"
+    case "$key" in
+      --help | -h)
+        long_usage=yes
+        altertable_configure_usage
+        exit
+        ;;
+
+      *)
+        break
+        ;;
+
+    esac
+  done
+
+  # :command.command_filter
+  action="configure"
+
+  # :command.parse_requirements_while
+  while [[ $# -gt 0 ]]; do
+    key="$1"
+    case "$key" in
+      # :flag.case
+      --user)
+
+        # :flag.case_arg
+        if [[ -n ${2+x} ]]; then
+          args['--user']="$2"
+          shift
+          shift
+        else
+          printf "%s\n" "--user requires an argument: --user USERNAME" >&2
+          exit 1
+        fi
+        ;;
+
+      # :flag.case
+      --password)
+        # :flag.conflicts
+        if [[ -n "${args['--password-stdin']:-}" ]]; then
+          printf "conflicting options: %s cannot be used with %s\n" "$key" "--password-stdin" >&2
+          exit 1
+        fi
+
+        # :flag.case_arg
+        if [[ -n ${2+x} ]]; then
+          args['--password']="$2"
+          shift
+          shift
+        else
+          printf "%s\n" "--password requires an argument: --password PASSWORD" >&2
+          exit 1
+        fi
+        ;;
+
+      # :flag.case
+      --password-stdin)
+        # :flag.conflicts
+        for conflict in --password --api-key-stdin; do
+          if [[ -n "${args[$conflict]:-}" ]]; then
+            printf "conflicting options: %s cannot be used with %s\n" "$key" "$conflict" >&2
+            exit 1
+          fi
+        done
+
+        # :flag.case_no_arg
+        args['--password-stdin']=1
+        shift
+        ;;
+
+      # :flag.case
+      --basic-token)
+
+        # :flag.case_arg
+        if [[ -n ${2+x} ]]; then
+          args['--basic-token']="$2"
+          shift
+          shift
+        else
+          printf "%s\n" "--basic-token requires an argument: --basic-token TOKEN" >&2
+          exit 1
+        fi
+        ;;
+
+      # :flag.case
+      --api-key)
+        # :flag.conflicts
+        if [[ -n "${args['--api-key-stdin']:-}" ]]; then
+          printf "conflicting options: %s cannot be used with %s\n" "$key" "--api-key-stdin" >&2
+          exit 1
+        fi
+
+        # :flag.case_arg
+        if [[ -n ${2+x} ]]; then
+          args['--api-key']="$2"
+          shift
+          shift
+        else
+          printf "%s\n" "--api-key requires an argument: --api-key KEY" >&2
+          exit 1
+        fi
+        ;;
+
+      # :flag.case
+      --api-key-stdin)
+        # :flag.conflicts
+        for conflict in --api-key --password-stdin; do
+          if [[ -n "${args[$conflict]:-}" ]]; then
+            printf "conflicting options: %s cannot be used with %s\n" "$key" "$conflict" >&2
+            exit 1
+          fi
+        done
+
+        # :flag.case_no_arg
+        args['--api-key-stdin']=1
+        shift
+        ;;
+
+      # :flag.case
+      --env)
+
+        # :flag.case_arg
+        if [[ -n ${2+x} ]]; then
+          args['--env']="$2"
+          shift
+          shift
+        else
+          printf "%s\n" "--env requires an argument: --env NAME" >&2
+          exit 1
+        fi
+        ;;
+
+      # :flag.case
+      --default)
+
+        # :flag.case_no_arg
+        args['--default']=1
+        shift
+        ;;
+
+      # :flag.case
+      --api-base)
+
+        # :flag.case_arg
+        if [[ -n ${2+x} ]]; then
+          args['--api-base']="$2"
+          shift
+          shift
+        else
+          printf "%s\n" "--api-base requires an argument: --api-base URL" >&2
+          exit 1
+        fi
+        ;;
+
+      # :flag.case
+      --app-base)
+
+        # :flag.case_arg
+        if [[ -n ${2+x} ]]; then
+          args['--app-base']="$2"
+          shift
+          shift
+        else
+          printf "%s\n" "--app-base requires an argument: --app-base URL" >&2
+          exit 1
+        fi
+        ;;
+
+      # :flag.case
+      --list)
+
+        # :flag.case_no_arg
+        args['--list']=1
+        shift
+        ;;
+
+      # :flag.case
+      --remove)
+
+        # :flag.case_no_arg
+        args['--remove']=1
+        shift
+        ;;
+
+      # :flag.case
+      --lakehouse)
+
+        # :flag.case_no_arg
+        args['--lakehouse']=1
+        shift
+        ;;
+
+      # :flag.case
+      --all)
+
+        # :flag.case_no_arg
+        args['--all']=1
+        shift
+        ;;
+
+      # :flag.case
+      --yes | -y)
+
+        # :flag.case_no_arg
+        args['--yes']=1
+        shift
+        ;;
+
+      # :flag.case
+      --debug)
+
+        # :flag.case_no_arg
+        args['--debug']=1
+        shift
+        ;;
+
+      -?*)
+        printf "invalid option: %s\n" "$key" >&2
+        exit 1
+        ;;
+
+      *)
+        # :command.parse_requirements_case
+        # :command.parse_requirements_case_simple
+        printf "invalid argument: %s\n" "$key" >&2
+        exit 1
+
+        ;;
+
+    esac
+  done
+
+  # :command.needy_flags_filter
+  # :flag.needs
+  if [[ -n ${args['--api-key']+x} ]] && [[ -z "${args[--env]:-}" ]]; then
+    printf "%s\n" "--api-key needs --env" >&2
+    exit 1
+  fi
+
+  # :flag.needs
+  if [[ -n ${args['--api-key-stdin']+x} ]] && [[ -z "${args[--env]:-}" ]]; then
+    printf "%s\n" "--api-key-stdin needs --env" >&2
+    exit 1
+  fi
+
+  # :flag.needs
+  if [[ -n ${args['--default']+x} ]] && [[ -z "${args[--env]:-}" ]]; then
+    printf "%s\n" "--default needs --env" >&2
+    exit 1
+  fi
+
+  # :flag.needs
+  if [[ -n ${args['--lakehouse']+x} ]] && [[ -z "${args[--remove]:-}" ]]; then
+    printf "%s\n" "--lakehouse needs --remove" >&2
+    exit 1
+  fi
+
+  # :flag.needs
+  if [[ -n ${args['--all']+x} ]] && [[ -z "${args[--remove]:-}" ]]; then
+    printf "%s\n" "--all needs --remove" >&2
+    exit 1
+  fi
+
+}
+
 # :command.initialize
 initialize() {
   declare -g version="0.4.0"
@@ -1492,6 +2150,7 @@ run() {
     "upload") altertable_upload_command ;;
     "get-query") altertable_get_query_command ;;
     "cancel") altertable_cancel_command ;;
+    "configure") altertable_configure_command ;;
   esac
 }
 
