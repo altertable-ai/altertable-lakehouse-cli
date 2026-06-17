@@ -10,7 +10,15 @@ configure_run_set() {
   local app_base="${args[--app-base]:-}"
   local env="${args[--env]:-}"
 
-  # === stdin + --env validation: see Task 3 ===
+  # Read secrets from stdin when requested (mutual exclusion is enforced by bashly).
+  if [[ -n "${args[--password-stdin]:-}" ]]; then IFS= read -r password || true; fi
+  if [[ -n "${args[--api-key-stdin]:-}" ]]; then IFS= read -r api_key || true; fi
+
+  # --env applies only to --api-key/--default; lakehouse credentials are global.
+  if [[ -n "$env" && -z "$api_key" && -z "${args[--api-key-stdin]:-}" && -z "${args[--default]:-}" ]]; then
+    log_error "--env applies only to --api-key/--default; lakehouse credentials are global."
+    exit 1
+  fi
 
   # Interactive when nothing was provided.
   if [[ -z "$user" && -z "$password" && -z "$basic_token" && -z "$api_key" \

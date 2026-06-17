@@ -48,5 +48,32 @@ pass "a second environment does not change the default"
 grep -q '^default_env=staging$' "${CONFIG_FILE}" || fail "configure: --default should switch default_env"
 pass "--default switches the default environment"
 
+# ── Task 3: stdin secrets & validation ──
+rm -f "${CONFIG_FILE}" "${CRED_FILE}"
+
+# Declarative guards from bashly.yml (conflicts / needs):
+if "${CLI}" configure --password p --password-stdin >/dev/null 2>&1 <<<"x"; then
+  fail "configure: --password and --password-stdin together should error"
+fi
+pass "--password + --password-stdin is rejected (bashly conflicts)"
+if "${CLI}" configure --api-key k >/dev/null 2>&1; then
+  fail "configure: --api-key without --env should error"
+fi
+pass "--api-key without --env is rejected (bashly needs)"
+
+# Code guard: --env only applies to --api-key/--default.
+if "${CLI}" configure --user u --env production >/dev/null 2>&1; then
+  fail "configure: --env with lakehouse-only fields should error"
+fi
+pass "--env is rejected for a lakehouse-only configure"
+
+# stdin reading:
+printf 's_fromstdin' | "${CLI}" configure --user alice --password-stdin >/dev/null 2>&1
+grep -q '^lakehouse/password=s_fromstdin$' "${CRED_FILE}" || fail "configure: --password-stdin should store the piped password"
+pass "--password-stdin reads the password from stdin"
+printf 'atm_fromstdin' | "${CLI}" configure --api-key-stdin --env production >/dev/null 2>&1
+grep -q '^apikey/production=atm_fromstdin$' "${CRED_FILE}" || fail "configure: --api-key-stdin should store the piped key"
+pass "--api-key-stdin reads the API key from stdin"
+
 echo ""
 echo -e "${GREEN}All configure tests passed.${NC}"
