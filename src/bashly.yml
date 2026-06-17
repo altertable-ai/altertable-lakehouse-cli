@@ -163,6 +163,8 @@ commands:
     help: Show stored configuration (secrets masked)
   - long: --remove
     help: Remove the stored credential
+  - long: --clear
+    help: Remove all stored configuration and credentials (no prompt)
   - long: --yes
     short: -y
     help: Do not prompt for confirmation

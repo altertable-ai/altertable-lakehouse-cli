@@ -424,6 +424,11 @@ altertable_configure_usage() {
     echo
 
     # :flag.usage
+    printf "  %s\n" "--clear"
+    printf "    Remove all stored configuration and credentials (no prompt)\n"
+    echo
+
+    # :flag.usage
     printf "  %s\n" "--yes, -y"
     printf "    Do not prompt for confirmation\n"
     echo
@@ -743,6 +748,13 @@ configure_run_remove() {
   _confirm "Remove the stored altertable credential?" || { printf 'Aborted.\n' >&2; return 0; }
   configure_clear_all
   printf 'Removed stored credential.\n' >&2
+  return 0
+}
+
+configure_run_clear() {
+  configure_clear_all
+  rm -f "$(config_file)" "$(credentials_file)"
+  printf 'Cleared all altertable configuration.\n' >&2
   return 0
 }
 
@@ -1101,6 +1113,8 @@ altertable_configure_command() {
     configure_run_list
   elif [[ -n "${args[--remove]:-}" ]]; then
     configure_run_remove
+  elif [[ -n "${args[--clear]:-}" ]]; then
+    configure_run_clear
   else
     configure_run_set
   fi
@@ -2050,6 +2064,14 @@ altertable_configure_parse_requirements() {
 
         # :flag.case_no_arg
         args['--remove']=1
+        shift
+        ;;
+
+      # :flag.case
+      --clear)
+
+        # :flag.case_no_arg
+        args['--clear']=1
         shift
         ;;
 

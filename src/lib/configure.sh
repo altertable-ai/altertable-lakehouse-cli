@@ -136,3 +136,10 @@ configure_run_remove() {
   printf 'Removed stored credential.\n' >&2
   return 0
 }
+
+configure_run_clear() {
+  configure_clear_all
+  rm -f "$(config_file)" "$(credentials_file)"
+  printf 'Cleared all altertable configuration.\n' >&2
+  return 0
+}

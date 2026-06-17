@@ -164,5 +164,14 @@ chmod 600 "${CRED_FILE}"
 "${CLI}" configure --list >/dev/null 2>&1 || fail "--list should accept a 600 credentials file"
 pass "a 600 credentials file is accepted"
 
+# ── configure --clear (non-interactive full reset) ──
+rm -f "${CONFIG_FILE}" "${CRED_FILE}"
+"${CLI}" configure --user u --password p >/dev/null 2>&1
+"${CLI}" configure --clear >/dev/null 2>&1 || fail "--clear should exit 0"
+if [[ -f "${CONFIG_FILE}" ]]; then fail "--clear should remove the config file"; fi
+if [[ -f "${CRED_FILE}" ]]; then fail "--clear should remove the credentials file"; fi
+echo "$("${CLI}" configure --list 2>/dev/null)" | grep -q 'No credentials configured' || fail "--clear should leave no credentials"
+pass "--clear removes all stored configuration without prompting"
+
 echo ""
 echo -e "${GREEN}All configure tests passed.${NC}"

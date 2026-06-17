@@ -36,9 +36,10 @@ altertable configure --basic-token "$(printf '%s' user:pass | base64)"
 altertable configure --api-key atm_xxxx --env production
 printf '%s' "$KEY" | altertable configure --api-key-stdin --env production
 
-# Inspect (secrets are masked) and remove:
+# Inspect (secrets are masked), remove (prompts), or clear everything (no prompt):
 altertable configure --list
 altertable configure --remove
+altertable configure --clear
 ```
 
 Where things are stored:
