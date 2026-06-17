@@ -57,38 +57,4 @@ config_get() { kv_get "$(config_file)" "$1"; }
 config_set() { local f; f="$(config_file)"; kv_set "$f" "$1" "$2"; chmod 600 "$f" 2>/dev/null || true; }
 config_unset() { kv_unset "$(config_file)" "$1"; }
 
-# The comma-separated "environments" list (one env per line on output).
-config_envs() {
-  local raw; raw="$(config_get environments)"
-  [[ -z "$raw" ]] && return 0
-  printf '%s\n' "$raw" | tr ',' '\n' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' || true
-}
-config_env_exists() {
-  local target="$1" e
-  while IFS= read -r e; do [[ "$e" == "$target" ]] && return 0; done < <(config_envs)
-  return 1
-}
-config_add_env() {
-  local env="$1" joined
-  config_env_exists "$env" && return 0
-  joined="$( { config_envs; printf '%s\n' "$env"; } | grep -v '^$' | paste -sd, - || true)"
-  config_set environments "$joined"
-}
-config_remove_env_from_list() {
-  local env="$1" joined
-  joined="$(config_envs | grep -vx "$env" | paste -sd, - || true)"
-  if [[ -z "$joined" ]]; then config_unset environments; else config_set environments "$joined"; fi
-}
-
-resolve_api_base() {
-  if [[ -n "${ALTERTABLE_API_BASE:-}" ]]; then echo "${ALTERTABLE_API_BASE}"; return 0; fi
-  local c; c="$(config_get api_base)"
-  if [[ -n "$c" ]]; then echo "$c"; return 0; fi
-  echo "https://api.altertable.ai"
-}
-resolve_app_base() {
-  if [[ -n "${ALTERTABLE_APP_BASE:-}" ]]; then echo "${ALTERTABLE_APP_BASE}"; return 0; fi
-  local c; c="$(config_get app_base)"
-  if [[ -n "$c" ]]; then echo "$c"; return 0; fi
-  echo "https://app.altertable.ai"
-}
+resolve_api_base() { echo "${ALTERTABLE_API_BASE:-https://api.altertable.ai}"; }

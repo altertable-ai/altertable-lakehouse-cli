@@ -11,12 +11,6 @@ environment_variables:
   help: Pre-encoded Basic Auth Token (optional)
 - name: altertable_api_base
   help: "Data plane API Base URL (default: https://api.altertable.ai)"
-- name: altertable_app_base
-  help: "Management API Base URL (default: https://app.altertable.ai)"
-- name: altertable_api_key
-  help: Management API key (overrides stored value)
-- name: altertable_env
-  help: Default environment for management operations
 - name: altertable_config_home
   help: "Config/credentials directory (default: $XDG_CONFIG_HOME/altertable)"
 - name: altertable_secret_backend
@@ -138,7 +132,7 @@ commands:
   - altertable configure --user u_blabla --password s_llll
   - altertable configure --api-key atm_xxxx --env production
   - altertable configure --list
-  - altertable configure --remove --env production
+  - altertable configure --remove
   flags:
   - long: --user
     arg: username
@@ -165,25 +159,10 @@ commands:
   - long: --env
     arg: name
     help: Target environment (management API keys are per-environment)
-  - long: --default
-    help: Mark the --env environment as the default
-    needs: [--env]
-  - long: --api-base
-    arg: url
-    help: Override the data-plane base URL
-  - long: --app-base
-    arg: url
-    help: Override the management base URL
   - long: --list
     help: Show stored configuration (secrets masked)
   - long: --remove
-    help: Remove stored credentials (with --env, --lakehouse, or --all)
-  - long: --lakehouse
-    help: With --remove, remove the global lakehouse credential
-    needs: [--remove]
-  - long: --all
-    help: With --remove, remove all stored credentials and config
-    needs: [--remove]
+    help: Remove the stored credential
   - long: --yes
     short: -y
     help: Do not prompt for confirmation
