@@ -414,23 +414,13 @@ altertable_configure_usage() {
     echo
 
     # :flag.usage
-    printf "  %s\n" "--list"
+    printf "  %s\n" "--show"
     printf "    Show stored configuration (secrets masked)\n"
-    echo
-
-    # :flag.usage
-    printf "  %s\n" "--remove"
-    printf "    Remove the stored credential\n"
     echo
 
     # :flag.usage
     printf "  %s\n" "--clear"
     printf "    Remove all stored configuration and credentials (no prompt)\n"
-    echo
-
-    # :flag.usage
-    printf "  %s\n" "--yes, -y"
-    printf "    Do not prompt for confirmation\n"
     echo
 
     # :flag.usage
@@ -448,8 +438,8 @@ altertable_configure_usage() {
     printf "  altertable configure\n"
     printf "  altertable configure --user u_blabla --password s_llll\n"
     printf "  altertable configure --api-key atm_xxxx --env production\n"
-    printf "  altertable configure --list\n"
-    printf "  altertable configure --remove\n"
+    printf "  altertable configure --show\n"
+    printf "  altertable configure --clear\n"
     echo
 
   fi
@@ -708,7 +698,7 @@ configure_run_interactive() {
   printf 'Saved lakehouse credentials for user %s.\n' "$user" >&2
 }
 
-configure_run_list() {
+configure_run_show() {
   local store_display
   case "$(secret_backend)" in
     macos) store_display="MacOS keychain" ;;
@@ -733,21 +723,6 @@ configure_run_list() {
   else
     printf '  No credentials configured. Run: altertable configure\n'
   fi
-  return 0
-}
-
-_confirm() {
-  local msg="$1" ans
-  [[ -n "${args[--yes]:-}" ]] && return 0
-  printf '%s [y/N] ' "$msg" >&2
-  IFS= read -r ans || true
-  [[ "$ans" == "y" || "$ans" == "Y" ]]
-}
-
-configure_run_remove() {
-  _confirm "Remove the stored altertable credential?" || { printf 'Aborted.\n' >&2; return 0; }
-  configure_clear_all
-  printf 'Removed stored credential.\n' >&2
   return 0
 }
 
@@ -1109,10 +1084,8 @@ altertable_configure_command() {
 
   # src/configure_command.sh
   # Dispatch configure modes. Behavior lives in src/lib/configure.sh.
-  if [[ -n "${args[--list]:-}" ]]; then
-    configure_run_list
-  elif [[ -n "${args[--remove]:-}" ]]; then
-    configure_run_remove
+  if [[ -n "${args[--show]:-}" ]]; then
+    configure_run_show
   elif [[ -n "${args[--clear]:-}" ]]; then
     configure_run_clear
   else
@@ -2052,18 +2025,10 @@ altertable_configure_parse_requirements() {
         ;;
 
       # :flag.case
-      --list)
+      --show)
 
         # :flag.case_no_arg
-        args['--list']=1
-        shift
-        ;;
-
-      # :flag.case
-      --remove)
-
-        # :flag.case_no_arg
-        args['--remove']=1
+        args['--show']=1
         shift
         ;;
 
@@ -2072,14 +2037,6 @@ altertable_configure_parse_requirements() {
 
         # :flag.case_no_arg
         args['--clear']=1
-        shift
-        ;;
-
-      # :flag.case
-      --yes | -y)
-
-        # :flag.case_no_arg
-        args['--yes']=1
         shift
         ;;
 

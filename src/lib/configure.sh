@@ -94,7 +94,7 @@ configure_run_interactive() {
   printf 'Saved lakehouse credentials for user %s.\n' "$user" >&2
 }
 
-configure_run_list() {
+configure_run_show() {
   local store_display
   case "$(secret_backend)" in
     macos) store_display="MacOS keychain" ;;
@@ -119,21 +119,6 @@ configure_run_list() {
   else
     printf '  No credentials configured. Run: altertable configure\n'
   fi
-  return 0
-}
-
-_confirm() {
-  local msg="$1" ans
-  [[ -n "${args[--yes]:-}" ]] && return 0
-  printf '%s [y/N] ' "$msg" >&2
-  IFS= read -r ans || true
-  [[ "$ans" == "y" || "$ans" == "Y" ]]
-}
-
-configure_run_remove() {
-  _confirm "Remove the stored altertable credential?" || { printf 'Aborted.\n' >&2; return 0; }
-  configure_clear_all
-  printf 'Removed stored credential.\n' >&2
   return 0
 }
 

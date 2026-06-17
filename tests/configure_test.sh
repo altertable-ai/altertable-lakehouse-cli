@@ -105,22 +105,16 @@ printf 'atm_fromstdin' | "${CLI}" configure --api-key-stdin --env prod >/dev/nul
 grep -q '^api-key=atm_fromstdin$' "${CRED_FILE}" || fail "--api-key-stdin should store the piped key"
 pass "--api-key-stdin reads the API key from stdin"
 
-# ── configure --list ──
+# ── configure --show ──
 rm -f "${CONFIG_FILE}" "${CRED_FILE}"
 "${CLI}" configure --user u_blabla --password s_llll >/dev/null 2>&1
-OUT="$("${CLI}" configure --list 2>/dev/null)"
-echo "${OUT}" | grep -q 'u_blabla' || fail "--list: should show the username"
-echo "${OUT}" | grep -Eq 'password:[[:space:]]*set' || fail "--list: should show password as set"
-if echo "${OUT}" | grep -q 's_llll'; then fail "--list: must NOT print the secret value"; fi
-echo "${OUT}" | grep -Fq "${CRED_FILE}" || fail "--list: should show the credentials file path as the secret store"
-"${CLI}" configure --list >/dev/null 2>&1 || fail "--list: should exit 0"
-pass "--list shows the stored mechanism, masks secrets, names the secret store, exits 0"
-
-# ── configure --remove ──
-"${CLI}" configure --remove --yes >/dev/null 2>&1
-OUT="$("${CLI}" configure --list 2>/dev/null)"
-echo "${OUT}" | grep -q 'No credentials configured' || fail "--remove should clear the stored credential"
-pass "--remove wipes the stored credential"
+OUT="$("${CLI}" configure --show 2>/dev/null)"
+echo "${OUT}" | grep -q 'u_blabla' || fail "--show: should show the username"
+echo "${OUT}" | grep -Eq 'password:[[:space:]]*set' || fail "--show: should show password as set"
+if echo "${OUT}" | grep -q 's_llll'; then fail "--show: must NOT print the secret value"; fi
+echo "${OUT}" | grep -Fq "${CRED_FILE}" || fail "--show: should show the credentials file path as the secret store"
+"${CLI}" configure --show >/dev/null 2>&1 || fail "--show: should exit 0"
+pass "--show shows the stored mechanism, masks secrets, names the secret store, exits 0"
 
 # ── interactive ──
 rm -f "${CONFIG_FILE}" "${CRED_FILE}"
@@ -153,15 +147,15 @@ pass "environment variables take precedence over stored credentials"
 rm -f "${CONFIG_FILE}" "${CRED_FILE}"
 "${CLI}" configure --user u --password p >/dev/null 2>&1
 chmod 644 "${CRED_FILE}"
-ERR="$("${CLI}" configure --list 2>&1 >/dev/null)" && fail "--list should refuse a 644 credentials file"
+ERR="$("${CLI}" configure --show 2>&1 >/dev/null)" && fail "--show should refuse a 644 credentials file"
 echo "${ERR}" | grep -q 'too open' || fail "expected a 'too open' error, got '${ERR}'"
-pass "--list refuses a credentials file looser than 600"
+pass "--show refuses a credentials file looser than 600"
 setup_curl_mock
 if "${CLI}" query --statement "SELECT 1" >/dev/null 2>&1; then fail "query should refuse a 644 credentials file"; fi
 teardown_curl_mock
 pass "commands refuse to use a credentials file looser than 600"
 chmod 600 "${CRED_FILE}"
-"${CLI}" configure --list >/dev/null 2>&1 || fail "--list should accept a 600 credentials file"
+"${CLI}" configure --show >/dev/null 2>&1 || fail "--show should accept a 600 credentials file"
 pass "a 600 credentials file is accepted"
 
 # ── configure --clear (non-interactive full reset) ──
@@ -170,7 +164,7 @@ rm -f "${CONFIG_FILE}" "${CRED_FILE}"
 "${CLI}" configure --clear >/dev/null 2>&1 || fail "--clear should exit 0"
 if [[ -f "${CONFIG_FILE}" ]]; then fail "--clear should remove the config file"; fi
 if [[ -f "${CRED_FILE}" ]]; then fail "--clear should remove the credentials file"; fi
-echo "$("${CLI}" configure --list 2>/dev/null)" | grep -q 'No credentials configured' || fail "--clear should leave no credentials"
+echo "$("${CLI}" configure --show 2>/dev/null)" | grep -q 'No credentials configured' || fail "--clear should leave no credentials"
 pass "--clear removes all stored configuration without prompting"
 
 echo ""

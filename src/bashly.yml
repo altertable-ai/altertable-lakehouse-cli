@@ -131,8 +131,8 @@ commands:
   - altertable configure
   - altertable configure --user u_blabla --password s_llll
   - altertable configure --api-key atm_xxxx --env production
-  - altertable configure --list
-  - altertable configure --remove
+  - altertable configure --show
+  - altertable configure --clear
   flags:
   - long: --user
     arg: username
@@ -159,13 +159,8 @@ commands:
   - long: --env
     arg: name
     help: Target environment (management API keys are per-environment)
-  - long: --list
+  - long: --show
     help: Show stored configuration (secrets masked)
-  - long: --remove
-    help: Remove the stored credential
   - long: --clear
     help: Remove all stored configuration and credentials (no prompt)
-  - long: --yes
-    short: -y
-    help: Do not prompt for confirmation
   - *debug_flag

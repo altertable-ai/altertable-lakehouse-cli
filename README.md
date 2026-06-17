@@ -36,9 +36,8 @@ altertable configure --basic-token "$(printf '%s' user:pass | base64)"
 altertable configure --api-key atm_xxxx --env production
 printf '%s' "$KEY" | altertable configure --api-key-stdin --env production
 
-# Inspect (secrets are masked), remove (prompts), or clear everything (no prompt):
-altertable configure --list
-altertable configure --remove
+# Inspect (secrets are masked) or clear everything (no prompt):
+altertable configure --show
 altertable configure --clear
 ```
 
@@ -47,7 +46,7 @@ Where things are stored:
 - **Non-secret config** (username, api-key environment): `~/.config/altertable/config`.
 - **Secret** (password, Basic token, or API key): the **macOS Keychain** when available,
   otherwise a `~/.config/altertable/credentials` file with `chmod 600`. Force a backend
-  with `ALTERTABLE_SECRET_BACKEND=keychain|file`. `altertable configure --list` shows
+  with `ALTERTABLE_SECRET_BACKEND=keychain|file`. `altertable configure --show` shows
   which is in use (`MacOS keychain` or the file path). For security, the CLI **refuses to
   read the credentials file if its permissions are looser than `600`** — run
   `chmod 600 ~/.config/altertable/credentials` if prompted.
