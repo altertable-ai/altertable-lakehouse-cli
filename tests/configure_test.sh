@@ -116,5 +116,13 @@ pass "--remove requires an explicit target"
 if [[ -f "${CRED_FILE}" ]]; then fail "--remove --all: credentials file should be gone"; fi
 pass "--remove --all clears everything"
 
+# ── Task 6: interactive configure ──
+rm -f "${CONFIG_FILE}" "${CRED_FILE}"
+printf 'alice\nsecret\n' | "${CLI}" configure >/dev/null 2>&1
+grep -q '^user=alice$' "${CONFIG_FILE}" || fail "interactive: should store the username"
+pass "interactive configure stores the username"
+grep -q '^lakehouse/password=secret$' "${CRED_FILE}" || fail "interactive: should store the password"
+pass "interactive configure stores the password"
+
 echo ""
 echo -e "${GREEN}All configure tests passed.${NC}"

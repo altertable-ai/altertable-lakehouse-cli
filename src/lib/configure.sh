@@ -52,7 +52,25 @@ configure_run_set() {
 }
 
 # Stubs replaced in later tasks.
-configure_run_interactive() { log_error "interactive configure not yet available"; exit 1; }
+configure_run_interactive() {
+  local current_user user password
+  current_user="$(config_get user)"
+  if [[ -n "$current_user" ]]; then
+    printf 'Lakehouse username [%s]: ' "$current_user" >&2
+  else
+    printf 'Lakehouse username: ' >&2
+  fi
+  IFS= read -r user || true
+  [[ -z "$user" ]] && user="$current_user"
+  printf 'Lakehouse password (input hidden): ' >&2
+  IFS= read -rs password || true
+  printf '\n' >&2
+  [[ -z "$user" ]] && { log_error "Username is required."; exit 1; }
+  [[ -z "$password" ]] && { log_error "Password is required."; exit 1; }
+  config_set user "$user"
+  secret_set "lakehouse/password" "$password"
+  printf 'Saved lakehouse credentials for user %s.\n' "$user" >&2
+}
 configure_run_list() {
   local user api_base app_base default_env e found=0
   user="$(config_get user)"
