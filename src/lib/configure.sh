@@ -79,4 +79,41 @@ configure_run_list() {
   [[ "$found" -eq 0 ]] && printf '    (none configured)\n'
   return 0
 }
-configure_run_remove() { log_error "configure --remove not yet available"; exit 1; }
+_confirm() {
+  local msg="$1" ans
+  [[ -n "${args[--yes]:-}" ]] && return 0
+  printf '%s [y/N] ' "$msg" >&2
+  IFS= read -r ans || true
+  [[ "$ans" == "y" || "$ans" == "Y" ]]
+}
+
+configure_run_remove() {
+  local env="${args[--env]:-}" e
+  if [[ -n "${args[--all]:-}" ]]; then
+    _confirm "Remove ALL altertable credentials and configuration?" || { printf 'Aborted.\n' >&2; return; }
+    while IFS= read -r e; do [[ -n "$e" ]] && secret_delete "apikey/${e}"; done < <(config_envs)
+    secret_delete "lakehouse/password"
+    secret_delete "lakehouse/basic-token"
+    rm -f "$(config_file)" "$(credentials_file)"
+    printf 'Removed all altertable credentials and configuration.\n' >&2
+    return
+  fi
+  if [[ -n "${args[--lakehouse]:-}" ]]; then
+    _confirm "Remove the global lakehouse credential?" || { printf 'Aborted.\n' >&2; return; }
+    secret_delete "lakehouse/password"
+    secret_delete "lakehouse/basic-token"
+    config_unset user
+    printf 'Removed lakehouse credential.\n' >&2
+    return
+  fi
+  if [[ -z "$env" ]]; then
+    log_error "Specify what to remove: --env <name>, --lakehouse, or --all."
+    exit 1
+  fi
+  config_env_exists "$env" || { log_error "No configuration for environment '${env}'."; exit 1; }
+  _confirm "Remove API key for environment '${env}'?" || { printf 'Aborted.\n' >&2; return; }
+  secret_delete "apikey/${env}"
+  config_remove_env_from_list "$env"
+  [[ "$(config_get default_env)" == "$env" ]] && config_unset default_env
+  printf "Removed API key for environment '%s'.\n" "$env" >&2
+}

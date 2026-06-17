@@ -91,5 +91,30 @@ pass "--list lists configured environments"
 "${CLI}" configure --list >/dev/null 2>&1 || fail "--list: should exit 0 when environments are configured"
 pass "--list exits 0 on success"
 
+# ── Task 5: configure --remove ──
+rm -f "${CONFIG_FILE}" "${CRED_FILE}"
+"${CLI}" configure --user u --password p >/dev/null 2>&1
+"${CLI}" configure --api-key atm_prod --env production >/dev/null 2>&1
+"${CLI}" configure --api-key atm_stg --env staging >/dev/null 2>&1
+
+"${CLI}" configure --remove --env production --yes >/dev/null 2>&1
+if grep -q '^apikey/production=' "${CRED_FILE}"; then fail "--remove --env: production key should be gone"; fi
+pass "--remove --env removes that environment's API key"
+if grep -q 'production' "${CONFIG_FILE}"; then fail "--remove --env: production should leave config (env list + default)"; fi
+pass "--remove --env drops the env from the list and unsets a matching default"
+
+"${CLI}" configure --remove --lakehouse --yes >/dev/null 2>&1
+if grep -q '^lakehouse/password=' "${CRED_FILE}"; then fail "--remove --lakehouse: password should be gone"; fi
+pass "--remove --lakehouse removes the lakehouse credential"
+
+if "${CLI}" configure --remove >/dev/null 2>&1; then
+  fail "--remove without a target should error"
+fi
+pass "--remove requires an explicit target"
+
+"${CLI}" configure --remove --all --yes >/dev/null 2>&1
+if [[ -f "${CRED_FILE}" ]]; then fail "--remove --all: credentials file should be gone"; fi
+pass "--remove --all clears everything"
+
 echo ""
 echo -e "${GREEN}All configure tests passed.${NC}"
