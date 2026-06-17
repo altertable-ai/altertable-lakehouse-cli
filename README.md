@@ -19,7 +19,41 @@ chmod +x /usr/local/bin/altertable
 
 ## Configuration
 
-Set the following environment variables for authentication:
+The fastest way to get set up is `altertable configure`, which stores credentials
+securely (OS keychain when available, otherwise a `0600` file under
+`~/.config/altertable`).
+
+```bash
+# Lakehouse credentials (global — the environment is derived from the credential).
+# Run with no flags to be prompted (password input is hidden):
+altertable configure
+
+# Or pass them directly (prefer the prompt or --password-stdin to keep secrets out of shell history):
+altertable configure --user your_username --password your_password
+printf '%s' "$PASSWORD" | altertable configure --user your_username --password-stdin
+
+# Management API key (per environment):
+altertable configure --api-key atm_xxxx --env production
+printf '%s' "$KEY" | altertable configure --api-key-stdin --env production
+
+# Inspect (secrets are masked) and remove:
+altertable configure --list
+altertable configure --remove --env production
+altertable configure --remove --lakehouse
+altertable configure --remove --all
+```
+
+Where things are stored:
+
+- **Non-secret config** (username, base URLs, default env): `~/.config/altertable/config`.
+- **Secrets** (password, API keys, Basic token): the OS keychain — macOS Keychain
+  (`security`) or Linux libsecret (`secret-tool`) — or, if neither is present,
+  `~/.config/altertable/credentials` (`chmod 600`). Force a backend with
+  `ALTERTABLE_SECRET_BACKEND=keychain|file`.
+
+Credential precedence (highest first): environment variables
+(`ALTERTABLE_BASIC_AUTH_TOKEN`, `ALTERTABLE_LAKEHOUSE_USERNAME`/`_PASSWORD`) →
+stored configuration. This keeps CI and scripted usage working unchanged:
 
 ```bash
 export ALTERTABLE_LAKEHOUSE_USERNAME="your_lakehouse_username"
