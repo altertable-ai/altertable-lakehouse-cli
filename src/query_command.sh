@@ -1,5 +1,19 @@
-echo "# This file is located at 'src/query_command.sh'."
-echo "# It contains the implementation for the 'altertable query' command."
-echo "# The code you write here will be wrapped by a function named 'altertable_query_command()'."
-echo "# Feel free to edit this file; your changes will persist when regenerating."
-inspect_args
+local statement="${args[--statement]}"
+local query_id="${args[--query-id]:-}"
+local session_id="${args[--session-id]:-}"
+local payload
+
+if command -v jq >/dev/null 2>&1; then
+  payload=$(jq -n \
+    --arg stmt "$statement" \
+    --arg qid "$query_id" \
+    --arg sid "$session_id" \
+    '{statement: $stmt} +
+     (if $qid != "" then {query_id: $qid}   else {} end) +
+     (if $sid != "" then {session_id: $sid} else {} end)')
+else
+  local safe_statement="${statement//\"/\\\"}"
+  payload="{\"statement\": \"${safe_statement}\"}"
+fi
+
+http_request "POST" "/query" "${payload}" "Content-Type: application/json"
