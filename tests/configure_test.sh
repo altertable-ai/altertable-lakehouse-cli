@@ -75,5 +75,21 @@ printf 'atm_fromstdin' | "${CLI}" configure --api-key-stdin --env production >/d
 grep -q '^apikey/production=atm_fromstdin$' "${CRED_FILE}" || fail "configure: --api-key-stdin should store the piped key"
 pass "--api-key-stdin reads the API key from stdin"
 
+# ── Task 4: configure --list ──
+rm -f "${CONFIG_FILE}" "${CRED_FILE}"
+"${CLI}" configure --user u_blabla --password s_llll >/dev/null 2>&1
+"${CLI}" configure --api-key atm_prod --env production >/dev/null 2>&1
+OUT="$("${CLI}" configure --list 2>/dev/null)"
+echo "${OUT}" | grep -q 'u_blabla' || fail "--list: should show the username"
+pass "--list shows the lakehouse username"
+echo "${OUT}" | grep -Eq 'password:[[:space:]]*set' || fail "--list: should show password as set"
+pass "--list shows the password as set"
+if echo "${OUT}" | grep -q 's_llll'; then fail "--list: must NOT print the secret value"; fi
+pass "--list never prints a secret value"
+echo "${OUT}" | grep -q 'production' || fail "--list: should list the production environment"
+pass "--list lists configured environments"
+"${CLI}" configure --list >/dev/null 2>&1 || fail "--list: should exit 0 when environments are configured"
+pass "--list exits 0 on success"
+
 echo ""
 echo -e "${GREEN}All configure tests passed.${NC}"

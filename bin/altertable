@@ -725,7 +725,32 @@ configure_run_set() {
 
 # Stubs replaced in later tasks.
 configure_run_interactive() { log_error "interactive configure not yet available"; exit 1; }
-configure_run_list() { log_error "configure --list not yet available"; exit 1; }
+configure_run_list() {
+  local user api_base app_base default_env e found=0
+  user="$(config_get user)"
+  api_base="$(resolve_api_base)"
+  app_base="$(resolve_app_base)"
+  default_env="$(config_get default_env)"
+
+  printf 'Altertable CLI configuration\n'
+  printf '  Config dir:    %s\n' "$(config_dir)"
+  printf '  Secret store:  %s\n' "$(secret_backend)"
+  printf '\n  Lakehouse (data plane):\n'
+  printf '    user:        %s\n' "${user:-(not set)}"
+  if secret_exists "lakehouse/password"; then printf '    password:    set\n'; else printf '    password:    (not set)\n'; fi
+  if secret_exists "lakehouse/basic-token"; then printf '    basic-token: set\n'; fi
+  printf '    api_base:    %s\n' "$api_base"
+  printf '\n  Management API keys (by environment):\n'
+  printf '    app_base:    %s\n' "$app_base"
+  printf '    default env: %s\n' "${default_env:-(none)}"
+  while IFS= read -r e; do
+    [[ -z "$e" ]] && continue
+    found=1
+    if secret_exists "apikey/${e}"; then printf '    %s: set\n' "$e"; else printf '    %s: (listed, no key)\n' "$e"; fi
+  done < <(config_envs)
+  [[ "$found" -eq 0 ]] && printf '    (none configured)\n'
+  return 0
+}
 configure_run_remove() { log_error "configure --remove not yet available"; exit 1; }
 
 # src/lib/encode.sh
