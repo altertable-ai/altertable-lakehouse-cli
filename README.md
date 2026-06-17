@@ -4,7 +4,7 @@ A Bash-based CLI for the Altertable Lakehouse API.
 
 ## Requirements
 
-- `bash` (4.0+)
+- `bash` (4.2+)
 - `curl`
 - `jq` (optional but recommended for pretty-printing and robust JSON handling)
 
@@ -77,6 +77,36 @@ altertable cancel --query-id "query-uuid" --session-id "session-uuid"
 
 ```bash
 altertable validate --statement "SELECT * FROM users"
+```
+
+## Development
+
+The CLI is generated with [bashly](https://bashly.dev). The source of truth is the
+`src/` directory; `bin/altertable` is a generated artifact and must not be edited
+by hand.
+
+```bash
+# Install the toolchain (Ruby + Bundler required)
+bundle install
+
+# Edit src/bashly.yml (commands/flags) or src/*_command.sh / src/lib/*.sh (logic),
+# then regenerate and commit both the source and the generated binary:
+bundle exec bashly generate
+git add src bin/altertable
+```
+
+The version lives in `src/bashly.yml` and is bumped automatically by release-please.
+
+### Tests
+
+Integration tests run against the Altertable mock server:
+
+```bash
+docker run -d --rm --name at-mock -p 15000:15000 \
+  -e ALTERTABLE_MOCK_USERS=testuser:testpass \
+  ghcr.io/altertable-ai/altertable-mock:latest
+./tests/integration_test.sh
+docker stop at-mock
 ```
 
 ## License

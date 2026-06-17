@@ -12,16 +12,40 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Run ShellCheck
         uses: ludeeus/action-shellcheck@master
         with:
-          # Scan everything by default (finds .sh and sh/bash shebangs)
+          # Scan the generated CLI and test scripts, but not the bashly source
+          # partials (which reference functions defined in sibling files).
           severity: warning
-  
+          ignore_paths: src
+
+  generate:
+    name: Verify bashly generate is up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+          bundler-cache: true
+
+      - name: Generate CLI
+        run: bundle exec bashly generate
+
+      - name: Verify bin/altertable is in sync
+        run: |
+          if ! git diff -I '^  declare -g version=' --exit-code bin/altertable; then
+            echo "::error::bin/altertable is out of date. Run 'bundle exec bashly generate' and commit the result." >&2
+            exit 1
+          fi
+
   test:
     name: Integration Test (Mock)
     runs-on: ubuntu-latest
+    needs: generate
     services:
       altertable:
         image: ghcr.io/altertable-ai/altertable-mock:latest
@@ -38,7 +62,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Install dependencies
         run: sudo apt-get install -y curl jq
 

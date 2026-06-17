@@ -6,7 +6,7 @@
       "extra-files": [
         {
           "type": "generic",
-          "path": "bin/altertable"
+          "path": "src/bashly.yml"
         }
       ]
     }
