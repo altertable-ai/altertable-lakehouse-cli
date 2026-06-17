@@ -51,7 +51,6 @@ configure_run_set() {
   printf 'Configuration updated.\n' >&2
 }
 
-# Stubs replaced in later tasks.
 configure_run_interactive() {
   local current_user user password
   current_user="$(config_get user)"
