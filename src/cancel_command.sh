@@ -1,5 +1,6 @@
-echo "# This file is located at 'src/cancel_command.sh'."
-echo "# It contains the implementation for the 'altertable cancel' command."
-echo "# The code you write here will be wrapped by a function named 'altertable_cancel_command()'."
-echo "# Feel free to edit this file; your changes will persist when regenerating."
-inspect_args
+local query_id="${args[--query-id]}"
+local session_id="${args[--session-id]}"
+local query_id_enc session_id_enc
+query_id_enc=$(urlencode "$query_id")
+session_id_enc=$(urlencode "$session_id")
+http_request "DELETE" "/query/${query_id_enc}?session_id=${session_id_enc}" ""
