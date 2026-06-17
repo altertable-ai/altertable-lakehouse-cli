@@ -700,7 +700,17 @@ configure_run_set() {
   [[ -n "$api_base" ]] && config_set api_base "$api_base"
   [[ -n "$app_base" ]] && config_set app_base "$app_base"
 
-  # === management API key: see Task 2 ===
+  # Management API key (per environment; --env is guaranteed present by bashly `needs`).
+  if [[ -n "$api_key" ]]; then
+    secret_set "apikey/${env}" "$api_key"
+    config_add_env "$env"
+    if [[ -z "$(config_get default_env)" || -n "${args[--default]:-}" ]]; then
+      config_set default_env "$env"
+    fi
+  elif [[ -n "${args[--default]:-}" ]]; then
+    config_env_exists "$env" || { log_error "Unknown environment '${env}'. Configure an API key for it first."; exit 1; }
+    config_set default_env "$env"
+  fi
 
   printf 'Configuration updated.\n' >&2
 }

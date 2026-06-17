@@ -31,5 +31,22 @@ pass "configure stores lakehouse password in credentials (file backend)"
 [[ "$(file_mode "${CRED_FILE}")" == "600" ]] || fail "configure: credentials must be mode 600, got $(file_mode "${CRED_FILE}")"
 pass "credentials file is chmod 600"
 
+# ── Task 2: API key per-environment storage ──
+rm -f "${CONFIG_FILE}" "${CRED_FILE}"
+"${CLI}" configure --api-key atm_prod --env production >/dev/null 2>&1
+grep -q '^apikey/production=atm_prod$' "${CRED_FILE}" || fail "configure: expected apikey/production in credentials"
+pass "configure stores a per-environment API key"
+grep -q '^default_env=production$' "${CONFIG_FILE}" || fail "configure: first env should become default_env"
+pass "first configured environment becomes the default"
+grep -Eq '^environments=.*production' "${CONFIG_FILE}" || fail "configure: environments should list production"
+pass "configure tracks the environment in the environments list"
+
+"${CLI}" configure --api-key atm_stg --env staging >/dev/null 2>&1
+grep -q '^default_env=production$' "${CONFIG_FILE}" || fail "configure: default_env should stay production"
+pass "a second environment does not change the default"
+"${CLI}" configure --api-key atm_stg2 --env staging --default >/dev/null 2>&1
+grep -q '^default_env=staging$' "${CONFIG_FILE}" || fail "configure: --default should switch default_env"
+pass "--default switches the default environment"
+
 echo ""
 echo -e "${GREEN}All configure tests passed.${NC}"
