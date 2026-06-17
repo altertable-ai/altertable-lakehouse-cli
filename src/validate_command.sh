@@ -1,5 +1,11 @@
-echo "# This file is located at 'src/validate_command.sh'."
-echo "# It contains the implementation for the 'altertable validate' command."
-echo "# The code you write here will be wrapped by a function named 'altertable_validate_command()'."
-echo "# Feel free to edit this file; your changes will persist when regenerating."
-inspect_args
+local statement="${args[--statement]}"
+local payload
+
+if command -v jq >/dev/null 2>&1; then
+  payload=$(jq -n --arg stmt "$statement" '{statement: $stmt}')
+else
+  local safe_statement="${statement//\"/\\\"}"
+  payload="{\"statement\": \"${safe_statement}\"}"
+fi
+
+http_request "POST" "/validate" "${payload}" "Content-Type: application/json"
