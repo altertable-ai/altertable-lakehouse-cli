@@ -4,7 +4,7 @@ http_request() {
   local data="$3"
   local extra_headers=("${@:4}")
 
-  local url="${ALTERTABLE_API_BASE:-https://api.altertable.ai}${endpoint}"
+  local url; url="$(resolve_api_base)${endpoint}"
   local user_agent="altertable-lakehouse-cli/${version}"
   local auth_header
   auth_header=$(get_auth_header)

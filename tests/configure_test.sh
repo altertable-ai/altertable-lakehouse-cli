@@ -124,5 +124,66 @@ pass "interactive configure stores the username"
 grep -q '^lakehouse/password=secret$' "${CRED_FILE}" || fail "interactive: should store the password"
 pass "interactive configure stores the password"
 
+# ── Task 7: stored credentials & base URL drive requests (offline mock curl) ──
+rm -f "${CONFIG_FILE}" "${CRED_FILE}"
+
+setup_curl_mock() {
+  _CURL_MOCK_DIR="$(mktemp -d)"
+  export _CURL_MOCK_AUTH_LOG="${_CURL_MOCK_DIR}/auth.log"
+  export _CURL_MOCK_URL_LOG="${_CURL_MOCK_DIR}/url.log"
+  : > "${_CURL_MOCK_AUTH_LOG}"; : > "${_CURL_MOCK_URL_LOG}"
+  cat > "${_CURL_MOCK_DIR}/curl" <<'MOCK'
+#!/usr/bin/env bash
+out=""; url=""; prev=""
+for arg in "$@"; do
+  case "$prev" in
+    -H) case "$arg" in Authorization:*) printf '%s\n' "$arg" > "${_CURL_MOCK_AUTH_LOG}" ;; esac ;;
+    -o) out="$arg" ;;
+  esac
+  case "$arg" in http://*|https://*) url="$arg" ;; esac
+  prev="$arg"
+done
+printf '%s\n' "$url" > "${_CURL_MOCK_URL_LOG}"
+[[ -n "$out" ]] && printf '{"ok":true}' > "$out"
+printf '200'
+MOCK
+  chmod +x "${_CURL_MOCK_DIR}/curl"
+  _CURL_MOCK_SAVED_PATH="${PATH}"
+  export PATH="${_CURL_MOCK_DIR}:${PATH}"
+}
+teardown_curl_mock() {
+  export PATH="${_CURL_MOCK_SAVED_PATH}"
+  rm -rf "${_CURL_MOCK_DIR}"
+}
+
+"${CLI}" configure --user alice --password secret >/dev/null 2>&1
+setup_curl_mock
+"${CLI}" query --statement "SELECT 1" >/dev/null 2>&1
+AUTH="$(cat "${_CURL_MOCK_AUTH_LOG}")"
+EXPECTED="Authorization: Basic $(printf '%s' 'alice:secret' | base64 | tr -d '\n')"
+[[ "${AUTH}" == "${EXPECTED}" ]] || fail "auth: expected stored-cred Basic header, got '${AUTH}'"
+pass "commands authenticate with stored lakehouse credentials"
+teardown_curl_mock
+
+setup_curl_mock
+ALTERTABLE_LAKEHOUSE_USERNAME=envuser ALTERTABLE_LAKEHOUSE_PASSWORD=envpass \
+  "${CLI}" query --statement "SELECT 1" >/dev/null 2>&1
+AUTH="$(cat "${_CURL_MOCK_AUTH_LOG}")"
+EXPECTED="Authorization: Basic $(printf '%s' 'envuser:envpass' | base64 | tr -d '\n')"
+[[ "${AUTH}" == "${EXPECTED}" ]] || fail "auth: env vars should beat stored creds, got '${AUTH}'"
+pass "environment variables take precedence over stored credentials"
+teardown_curl_mock
+
+"${CLI}" configure --api-base "http://example.test:9999" >/dev/null 2>&1
+setup_curl_mock
+"${CLI}" query --statement "SELECT 1" >/dev/null 2>&1
+URL="$(cat "${_CURL_MOCK_URL_LOG}")"
+case "${URL}" in
+  http://example.test:9999/query*) ;;
+  *) fail "base-url: expected stored api_base in URL, got '${URL}'" ;;
+esac
+pass "stored api_base is used as the request base URL"
+teardown_curl_mock
+
 echo ""
 echo -e "${GREEN}All configure tests passed.${NC}"
