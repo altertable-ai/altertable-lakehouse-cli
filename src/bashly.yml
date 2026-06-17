@@ -1,0 +1,122 @@
+name: altertable
+help: A Bash-based CLI for the Altertable Lakehouse API.
+version: 0.4.0 # x-release-please-version
+
+environment_variables:
+- name: altertable_lakehouse_username
+  help: Lakehouse Username
+- name: altertable_lakehouse_password
+  help: Lakehouse Password
+- name: altertable_basic_auth_token
+  help: Pre-encoded Basic Auth Token (optional)
+- name: altertable_api_base
+  help: "API Base URL (default: https://api.altertable.ai)"
+
+flags:
+- &debug_flag
+  long: --debug
+  help: Enable debug output
+
+commands:
+- name: query
+  help: Run a SQL query against the lakehouse.
+  flags:
+  - long: --statement
+    arg: sql
+    help: SQL statement to run
+    required: true
+  - long: --format
+    arg: fmt
+    help: Output format
+    default: json
+  - long: --query-id
+    arg: uuid
+    help: Optional stable query id
+  - long: --session-id
+    arg: uuid
+    help: Optional session id
+  - *debug_flag
+
+- name: validate
+  help: Validate a SQL statement without executing it.
+  flags:
+  - long: --statement
+    arg: sql
+    help: SQL to validate
+    required: true
+  - *debug_flag
+
+- name: append
+  help: Append JSON rows to a table.
+  flags:
+  - long: --catalog
+    arg: name
+    help: Catalog name
+    required: true
+  - long: --schema
+    arg: name
+    help: Schema name
+    required: true
+  - long: --table
+    arg: name
+    help: Table name
+    required: true
+  - long: --data
+    arg: json
+    help: JSON object, array, or @file
+    required: true
+  - *debug_flag
+
+- name: upload
+  help: Upload a file to create or update a table.
+  flags:
+  - long: --catalog
+    arg: name
+    help: Catalog name
+    required: true
+  - long: --schema
+    arg: name
+    help: Schema name
+    required: true
+  - long: --table
+    arg: name
+    help: Table name
+    required: true
+  - long: --format
+    arg: fmt
+    help: "File format, e.g. csv"
+    required: true
+  - long: --mode
+    arg: mode
+    help: overwrite or upsert
+    required: true
+  - long: --primary-key
+    arg: cols
+    help: "Required when --mode is upsert (comma-separated)"
+  - long: --file
+    arg: path
+    help: Local file to upload
+    required: true
+  - *debug_flag
+
+- name: get-query
+  help: Fetch metadata for a completed or running query.
+  args:
+  - name: query_uuid
+    help: Query id returned by the API
+    required: true
+  flags:
+  - *debug_flag
+
+- name: cancel
+  help: Cancel a running query.
+  flags:
+  - long: --query-id
+    arg: uuid
+    help: Query id to cancel
+    required: true
+  - long: --session-id
+    arg: uuid
+    help: Session id that owns the query
+    required: true
+  - *debug_flag
