@@ -33,6 +33,7 @@ altertable_usage() {
   printf "  %s   Fetch metadata for a completed or running query.\n" "get-query"
   printf "  %s   Cancel a running query.\n" "cancel   "
   printf "  %s   Configure and securely store credentials and settings.\n" "configure"
+  printf "  %s   Show the authenticated principal and organization (management API).\n" "whoami   "
   echo
 
   # :command.long_usage
@@ -445,6 +446,34 @@ altertable_configure_usage() {
   fi
 }
 
+# :command.usage
+altertable_whoami_usage() {
+  printf "altertable whoami - Show the authenticated principal and organization (management API).\n\n"
+
+  printf "%s\n" "Usage:"
+  printf "  altertable whoami [OPTIONS]\n"
+  printf "  altertable whoami --help | -h\n"
+  echo
+
+  # :command.long_usage
+  if [[ -n "$long_usage" ]]; then
+    # :command.usage_options
+    printf "%s\n" "Options:"
+
+    # :command.usage_flags
+    # :flag.usage
+    printf "  %s\n" "--debug"
+    printf "    Enable debug output\n"
+    echo
+
+    # :command.usage_fixed_flags
+    printf "  %s\n" "--help, -h"
+    printf "    Show this help\n"
+    echo
+
+  fi
+}
+
 # :command.normalize_input
 # :command.normalize_input_function
 normalize_input() {
@@ -838,6 +867,64 @@ log_warn() {
   echo "[WARN] $1" >&2
 }
 
+# src/lib/management.sh
+# Management REST API helpers (app.altertable.ai/rest/v1). Bearer auth, env-scoped.
+# Distinct from the data plane (api.altertable.ai, Basic auth) in src/lib/http.sh.
+
+resolve_management_api_base() {
+  echo "${ALTERTABLE_MANAGEMENT_API_BASE:-https://app.altertable.ai/rest/v1}"
+}
+
+# Echo "Authorization: Bearer <key>" from ALTERTABLE_API_KEY or the stored api-key secret.
+get_management_auth_header() {
+  local key="${ALTERTABLE_API_KEY:-}"
+  if [[ -z "$key" ]] && secret_exists "api-key"; then
+    key="$(secret_get 'api-key')"
+  fi
+  if [[ -z "$key" ]]; then
+    log_error "No management API key. Run 'altertable configure --api-key atm_xxx --env <name>' or set ALTERTABLE_API_KEY."
+    exit 1
+  fi
+  echo "Authorization: Bearer ${key}"
+}
+
+# Environment slug: ALTERTABLE_ENV, else the stored api_key_env. May be empty.
+management_env() {
+  local env="${ALTERTABLE_ENV:-}"
+  [[ -z "$env" ]] && env="$(config_get api_key_env)"
+  printf '%s' "$env"
+}
+
+# Environment slug, required.
+require_management_env() {
+  local env; env="$(management_env)"
+  if [[ -z "$env" ]]; then
+    log_error "No environment set. Run 'altertable configure --api-key atm_xxx --env <name>' or set ALTERTABLE_ENV."
+    exit 1
+  fi
+  printf '%s' "$env"
+}
+
+require_jq() {
+  if ! command -v jq >/dev/null 2>&1; then
+    log_error "This command requires 'jq'. Install it: https://jqlang.github.io/jq/"
+    exit 1
+  fi
+}
+
+management_request() {
+  local method="$1"
+  local endpoint="$2"
+  local data="$3"
+  local extra_headers=("${@:4}")
+
+  local url; url="$(resolve_management_api_base)${endpoint}"
+  local auth_header
+  auth_header=$(get_management_auth_header)
+
+  http_send "${method}" "${url}" "${auth_header}" "${data}" "${extra_headers[@]}"
+}
+
 # src/lib/secret.sh
 # Secret storage: macOS Keychain when available, otherwise a 0600 file.
 # Accounts: lakehouse/password, lakehouse/basic-token, api-key. Service: "altertable".
@@ -1093,6 +1180,31 @@ altertable_configure_command() {
 
 }
 
+# :command.function
+altertable_whoami_command() {
+
+  # src/whoami_command.sh
+  require_jq
+  response="$(management_request "GET" "/whoami" "")"
+
+  ptype="$(printf '%s' "$response" | jq -r '.principal.type // empty')"
+  pname="$(printf '%s' "$response" | jq -r '.principal.name // empty')"
+  pemail="$(printf '%s' "$response" | jq -r '.principal.email // empty')"
+  pslug="$(printf '%s' "$response" | jq -r '.principal.slug // empty')"
+  oname="$(printf '%s' "$response" | jq -r '.organization.name // empty')"
+  oslug="$(printf '%s' "$response" | jq -r '.organization.slug // empty')"
+
+  if [[ "$ptype" == "ServiceAccount" ]]; then
+    printf 'Service account: %s (%s)\n' "$pname" "$pslug"
+  elif [[ -n "$pemail" ]]; then
+    printf 'User: %s <%s>\n' "$pname" "$pemail"
+  else
+    printf 'User: %s\n' "$pname"
+  fi
+  printf 'Organization: %s (%s)\n' "$oname" "$oslug"
+
+}
+
 # :command.parse_requirements
 parse_requirements() {
   local key
@@ -1188,6 +1300,13 @@ parse_requirements() {
       action="configure"
       shift
       altertable_configure_parse_requirements "$@"
+      shift $#
+      ;;
+
+    whoami)
+      action="whoami"
+      shift
+      altertable_whoami_parse_requirements "$@"
       shift $#
       ;;
 
@@ -2078,6 +2197,60 @@ altertable_configure_parse_requirements() {
 
 }
 
+# :command.parse_requirements
+altertable_whoami_parse_requirements() {
+  local key
+
+  # :command.fixed_flags_filter
+  while [[ $# -gt 0 ]]; do
+    key="$1"
+    case "$key" in
+      --help | -h)
+        long_usage=yes
+        altertable_whoami_usage
+        exit
+        ;;
+
+      *)
+        break
+        ;;
+
+    esac
+  done
+
+  # :command.command_filter
+  action="whoami"
+
+  # :command.parse_requirements_while
+  while [[ $# -gt 0 ]]; do
+    key="$1"
+    case "$key" in
+      # :flag.case
+      --debug)
+
+        # :flag.case_no_arg
+        args['--debug']=1
+        shift
+        ;;
+
+      -?*)
+        printf "invalid option: %s\n" "$key" >&2
+        exit 1
+        ;;
+
+      *)
+        # :command.parse_requirements_case
+        # :command.parse_requirements_case_simple
+        printf "invalid argument: %s\n" "$key" >&2
+        exit 1
+
+        ;;
+
+    esac
+  done
+
+}
+
 # :command.initialize
 initialize() {
   declare -g version="0.4.0"
@@ -2105,6 +2278,7 @@ run() {
     "get-query") altertable_get_query_command ;;
     "cancel") altertable_cancel_command ;;
     "configure") altertable_configure_command ;;
+    "whoami") altertable_whoami_command ;;
   esac
 }
 

@@ -164,3 +164,8 @@ commands:
   - long: --clear
     help: Remove all stored configuration and credentials (no prompt)
   - *debug_flag
+
+- name: whoami
+  help: Show the authenticated principal and organization (management API).
+  flags:
+  - *debug_flag
