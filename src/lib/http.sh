@@ -1,13 +1,11 @@
-http_request() {
+http_send() {
   local method="$1"
-  local endpoint="$2"
-  local data="$3"
-  local extra_headers=("${@:4}")
+  local url="$2"
+  local auth_header="$3"
+  local data="$4"
+  local extra_headers=("${@:5}")
 
-  local url; url="$(resolve_api_base)${endpoint}"
   local user_agent="altertable-lakehouse-cli/${version}"
-  local auth_header
-  auth_header=$(get_auth_header)
 
   local curl_opts=(
     -s
@@ -62,4 +60,17 @@ http_request() {
     fi
     exit 1
   fi
+}
+
+http_request() {
+  local method="$1"
+  local endpoint="$2"
+  local data="$3"
+  local extra_headers=("${@:4}")
+
+  local url; url="$(resolve_api_base)${endpoint}"
+  local auth_header
+  auth_header=$(get_auth_header)
+
+  http_send "${method}" "${url}" "${auth_header}" "${data}" "${extra_headers[@]}"
 }
