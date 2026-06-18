@@ -464,19 +464,7 @@ http_request() {
 
   if [[ -n "${data}" ]]; then
     if [[ "${data}" == "@"* ]]; then
-      local is_binary=false
-      for h in "${extra_headers[@]}"; do
-        if [[ "$h" == *"Content-Type: application/octet-stream"* ]]; then
-          is_binary=true
-          break
-        fi
-      done
-
-      if [[ "$is_binary" == "true" ]]; then
-        curl_opts+=(--data-binary "${data}")
-      else
-        curl_opts+=(-d "${data}")
-      fi
+      curl_opts+=(--upload-file "${data:1}")
     else
       curl_opts+=(-H "Content-Type: application/json")
       curl_opts+=(-d "${data}")
