@@ -62,6 +62,61 @@ export ALTERTABLE_LAKEHOUSE_PASSWORD="your_lakehouse_password"
 # export ALTERTABLE_BASIC_AUTH_TOKEN="base64-token"
 ```
 
+## Management API commands
+
+`whoami` and `catalogs` talk to the **management API**
+(`https://app.altertable.ai/rest/v1` by default) — a different service from the data plane
+used by `query`/`append`/etc. They authenticate with a **management API key** (a `Bearer`
+`atm_` token), not lakehouse Basic credentials, and `catalogs` is scoped to an
+**environment**.
+
+Set both with `configure`:
+
+```bash
+altertable configure --api-key atm_xxxx --env production
+```
+
+Or via environment variables (these take precedence over stored config):
+
+```bash
+export ALTERTABLE_API_KEY="atm_xxxx"
+export ALTERTABLE_ENV="production"
+# Override the API base (e.g. for staging/self-hosted):
+# export ALTERTABLE_MANAGEMENT_API_BASE="https://app.altertable.ai/rest/v1"
+```
+
+The relevant environment variables:
+
+- `ALTERTABLE_API_KEY` — management API key (`atm_` token) for `whoami`/`catalogs`; overrides stored config.
+- `ALTERTABLE_ENV` — environment slug for `catalogs`; overrides the stored `api_key_env`.
+- `ALTERTABLE_MANAGEMENT_API_BASE` — management API base URL (default `https://app.altertable.ai/rest/v1`).
+
+These commands require `jq`.
+
+### whoami
+
+```bash
+altertable whoami
+# User: Jane Doe <jane@example.com>
+# Organization: Acme (acme)
+```
+
+### catalogs
+
+A *catalog* spans two backend resources — **databases** and **connections** — both scoped
+to the current environment.
+
+```bash
+# Create a catalog (only the 'altertable' engine is supported):
+altertable catalogs create --engine altertable --name "My Cat"
+
+# List catalogs (databases first, then connections):
+altertable catalogs list
+# TYPE        NAME     SLUG     ENGINE      CATALOG
+# database    My Cat   my-cat   altertable  my_cat
+# connection  Prod PG  prod-pg  postgres    prod_pg
+```
+
 ## Usage
 
 ### Run a Query
