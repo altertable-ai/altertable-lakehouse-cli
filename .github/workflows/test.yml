@@ -78,5 +78,8 @@ jobs:
       - name: Run Management Tests
         run: ./tests/management_test.sh
 
+      - name: Run Whoami Tests
+        run: ./tests/whoami_test.sh
+
       - name: Run Integration Tests
         run: ./tests/integration_test.sh
