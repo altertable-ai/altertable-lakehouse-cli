@@ -57,4 +57,9 @@ config_get() { kv_get "$(config_file)" "$1"; }
 config_set() { local f; f="$(config_file)"; kv_set "$f" "$1" "$2"; chmod 600 "$f" 2>/dev/null || true; }
 config_unset() { kv_unset "$(config_file)" "$1"; }
 
-resolve_api_base() { echo "${ALTERTABLE_API_BASE:-https://api.altertable.ai}"; }
+resolve_api_base() {
+  local base="${ALTERTABLE_API_BASE:-}"
+  [[ -z "$base" ]] && base="$(config_get api_base)"
+  [[ -z "$base" ]] && base="https://api.altertable.ai"
+  echo "${base%/}"
+}

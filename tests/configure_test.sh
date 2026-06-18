@@ -24,7 +24,9 @@ CRED_FILE="${TEST_HOME}/credentials"
 setup_curl_mock() {
   _CURL_MOCK_DIR="$(mktemp -d)"
   export _CURL_MOCK_AUTH_LOG="${_CURL_MOCK_DIR}/auth.log"
+  export _CURL_MOCK_URL_LOG="${_CURL_MOCK_DIR}/url.log"
   : > "${_CURL_MOCK_AUTH_LOG}"
+  : > "${_CURL_MOCK_URL_LOG}"
   cat > "${_CURL_MOCK_DIR}/curl" <<'MOCK'
 #!/usr/bin/env bash
 out=""; prev=""
@@ -33,6 +35,7 @@ for arg in "$@"; do
     -H) case "$arg" in Authorization:*) printf '%s\n' "$arg" > "${_CURL_MOCK_AUTH_LOG}" ;; esac ;;
     -o) out="$arg" ;;
   esac
+  case "$arg" in http*://*) printf '%s\n' "$arg" > "${_CURL_MOCK_URL_LOG}" ;; esac
   prev="$arg"
 done
 [[ -n "$out" ]] && printf '{"ok":true}' > "$out"
@@ -166,6 +169,63 @@ if [[ -f "${CONFIG_FILE}" ]]; then fail "--clear should remove the config file";
 if [[ -f "${CRED_FILE}" ]]; then fail "--clear should remove the credentials file"; fi
 echo "$("${CLI}" configure --show 2>/dev/null)" | grep -q 'No credentials configured' || fail "--clear should leave no credentials"
 pass "--clear removes all stored configuration without prompting"
+
+# ── endpoints stored alongside a credential ──
+rm -f "${CONFIG_FILE}" "${CRED_FILE}"
+"${CLI}" configure --api-key atm_x --env prod --control-plane-url http://localhost:13000 >/dev/null 2>&1
+grep -q '^management_api_base=http://localhost:13000$' "${CONFIG_FILE}" || fail "endpoints: control-plane root should be stored verbatim"
+rm -f "${CONFIG_FILE}" "${CRED_FILE}"
+"${CLI}" configure --user u --password p --data-plane-url http://localhost:15000 >/dev/null 2>&1
+grep -q '^api_base=http://localhost:15000$' "${CONFIG_FILE}" || fail "endpoints: data-plane base should be stored"
+pass "configure stores endpoints alongside a credential"
+
+# ── stored control-plane root gains /rest/v1 at request time ──
+rm -f "${CONFIG_FILE}" "${CRED_FILE}"
+"${CLI}" configure --api-key atm_x --env prod --control-plane-url http://localhost:13000 >/dev/null 2>&1
+setup_curl_mock
+"${CLI}" whoami >/dev/null 2>&1
+URL="$(cat "${_CURL_MOCK_URL_LOG}")"
+teardown_curl_mock
+[[ "${URL}" == "http://localhost:13000/rest/v1/whoami" ]] || fail "endpoints: expected stored root + /rest/v1/whoami, got '${URL}'"
+pass "a stored control-plane root resolves to <root>/rest/v1"
+
+# ── endpoint flag without a credential errors ──
+rm -f "${CONFIG_FILE}" "${CRED_FILE}"
+ERR="$("${CLI}" configure --data-plane-url http://x 2>&1 >/dev/null)"
+echo "${ERR}" | grep -Fq "endpoint flags must be set together with a credential." || fail "endpoints: standalone endpoint should error, got '${ERR}'"
+pass "an endpoint flag without a credential is rejected"
+
+# ── omitting an endpoint resets it to the default (override model) ──
+rm -f "${CONFIG_FILE}" "${CRED_FILE}"
+"${CLI}" configure --user u --password p --data-plane-url http://localhost:15000 >/dev/null 2>&1
+"${CLI}" configure --user u --password p >/dev/null 2>&1
+if grep -q '^api_base=' "${CONFIG_FILE}"; then fail "endpoints: a later configure without the flag should drop the stored endpoint"; fi
+pass "omitting an endpoint resets it to the default"
+
+# ── env var beats stored data-plane base ──
+rm -f "${CONFIG_FILE}" "${CRED_FILE}"
+"${CLI}" configure --user u --password p --data-plane-url http://stored:1111 >/dev/null 2>&1
+setup_curl_mock
+ALTERTABLE_API_BASE=http://env:2222 "${CLI}" query --statement "SELECT 1" >/dev/null 2>&1
+URL="$(cat "${_CURL_MOCK_URL_LOG}")"
+teardown_curl_mock
+[[ "${URL}" == "http://env:2222/query" ]] || fail "endpoints: ALTERTABLE_API_BASE should beat stored api_base, got '${URL}'"
+setup_curl_mock
+"${CLI}" query --statement "SELECT 1" >/dev/null 2>&1
+URL="$(cat "${_CURL_MOCK_URL_LOG}")"
+teardown_curl_mock
+[[ "${URL}" == "http://stored:1111/query" ]] || fail "endpoints: stored api_base should be used when no env var, got '${URL}'"
+pass "data-plane precedence: env var > stored config"
+
+# ── --show displays both planes ──
+rm -f "${CONFIG_FILE}" "${CRED_FILE}"
+"${CLI}" configure --user u --password p --data-plane-url http://localhost:15000 --control-plane-url http://localhost:13000 >/dev/null 2>&1
+OUT="$("${CLI}" configure --show 2>/dev/null)"
+echo "${OUT}" | grep -q 'Data plane:' || fail "--show: missing Data plane line"
+echo "${OUT}" | grep -q 'Control plane:' || fail "--show: missing Control plane line"
+echo "${OUT}" | grep -Fq 'http://localhost:15000' || fail "--show: should show the stored data-plane base"
+echo "${OUT}" | grep -Fq 'http://localhost:13000/rest/v1' || fail "--show: should show the resolved control-plane base"
+pass "--show displays both the data plane and the control plane"
 
 echo ""
 echo -e "${GREEN}All configure tests passed.${NC}"

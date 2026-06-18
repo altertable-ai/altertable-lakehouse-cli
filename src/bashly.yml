@@ -163,6 +163,12 @@ commands:
     help: Show stored configuration (secrets masked)
   - long: --clear
     help: Remove all stored configuration and credentials (no prompt)
+  - long: --data-plane-url
+    arg: url
+    help: "Data-plane base URL (stored with the credential; default: https://api.altertable.ai)"
+  - long: --control-plane-url
+    arg: url
+    help: "Control-plane server root; the CLI appends /rest/v1 (default: https://app.altertable.ai)"
   - *debug_flag
 
 - name: whoami
