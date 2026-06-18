@@ -51,14 +51,30 @@ grep -q '^URL=https://app.altertable.ai/rest/v1/whoami$' "${_M_LOG}" || fail "mg
 teardown_mgmt_curl_mock
 pass "management auth uses stored Bearer api-key against the default base URL"
 
-# ── ALTERTABLE_API_KEY overrides the stored key; ALTERTABLE_MANAGEMENT_API_BASE overrides base ──
+# ── ALTERTABLE_API_KEY overrides the stored key; ALTERTABLE_MANAGEMENT_API_BASE (a root) overrides base ──
 setup_mgmt_curl_mock
-ALTERTABLE_API_KEY=atm_env ALTERTABLE_MANAGEMENT_API_BASE=http://localhost:9/rest/v1 \
+ALTERTABLE_API_KEY=atm_env ALTERTABLE_MANAGEMENT_API_BASE=http://localhost:9 \
   "${CLI}" whoami >/dev/null 2>&1
 grep -q '^AUTH=Authorization: Bearer atm_env$' "${_M_LOG}" || fail "mgmt: ALTERTABLE_API_KEY should win"
-grep -q '^URL=http://localhost:9/rest/v1/whoami$' "${_M_LOG}" || fail "mgmt: ALTERTABLE_MANAGEMENT_API_BASE should win"
+grep -q '^URL=http://localhost:9/rest/v1/whoami$' "${_M_LOG}" || fail "mgmt: expected root + /rest/v1, got '$(grep '^URL=' "${_M_LOG}")'"
 teardown_mgmt_curl_mock
-pass "ALTERTABLE_API_KEY and ALTERTABLE_MANAGEMENT_API_BASE take precedence"
+pass "ALTERTABLE_MANAGEMENT_API_BASE is a root; the CLI appends /rest/v1"
+
+# ── stored management_api_base (a root) is used when no env var is set ──
+printf 'management_api_base=http://localhost:7\n' >> "${ALTERTABLE_CONFIG_HOME}/config"
+setup_mgmt_curl_mock
+ALTERTABLE_API_KEY=atm_env "${CLI}" whoami >/dev/null 2>&1
+grep -q '^URL=http://localhost:7/rest/v1/whoami$' "${_M_LOG}" || fail "mgmt: stored root should be used, got '$(grep '^URL=' "${_M_LOG}")'"
+teardown_mgmt_curl_mock
+pass "a stored management_api_base root is honored"
+
+# ── a trailing slash on the root is trimmed ──
+setup_mgmt_curl_mock
+ALTERTABLE_API_KEY=atm_env ALTERTABLE_MANAGEMENT_API_BASE=http://localhost:8/ \
+  "${CLI}" whoami >/dev/null 2>&1
+grep -q '^URL=http://localhost:8/rest/v1/whoami$' "${_M_LOG}" || fail "mgmt: trailing slash should be trimmed, got '$(grep '^URL=' "${_M_LOG}")'"
+teardown_mgmt_curl_mock
+pass "a trailing slash on the control-plane root is trimmed"
 
 # ── no api-key configured → clear error ──
 "${CLI}" configure --clear >/dev/null 2>&1

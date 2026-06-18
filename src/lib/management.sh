@@ -1,8 +1,14 @@
 # Management REST API helpers (app.altertable.ai/rest/v1). Bearer auth, env-scoped.
 # Distinct from the data plane (api.altertable.ai, Basic auth) in src/lib/http.sh.
 
+# Resolve the control-plane server root (env var -> stored config -> default), trim a
+# trailing slash, and append the constant /rest/v1 API path.
 resolve_management_api_base() {
-  echo "${ALTERTABLE_MANAGEMENT_API_BASE:-https://app.altertable.ai/rest/v1}"
+  local root="${ALTERTABLE_MANAGEMENT_API_BASE:-}"
+  [[ -z "$root" ]] && root="$(config_get management_api_base)"
+  [[ -z "$root" ]] && root="https://app.altertable.ai"
+  root="${root%/}"
+  echo "${root}/rest/v1"
 }
 
 # Echo "Authorization: Bearer <key>" from ALTERTABLE_API_KEY or the stored api-key secret.
