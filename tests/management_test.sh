@@ -62,7 +62,7 @@ pass "ALTERTABLE_API_KEY and ALTERTABLE_MANAGEMENT_API_BASE take precedence"
 
 # ── no api-key configured → clear error ──
 "${CLI}" configure --clear >/dev/null 2>&1
-ERR="$(ALTERTABLE_SECRET_BACKEND=file "${CLI}" whoami 2>&1 >/dev/null)"
+ERR="$("${CLI}" whoami 2>&1 >/dev/null)"
 echo "${ERR}" | grep -q "No management API key" || fail "mgmt: expected 'No management API key' error, got '${ERR}'"
 pass "missing management API key errors clearly"
 
