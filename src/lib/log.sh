@@ -7,3 +7,7 @@ log_debug() {
 log_error() {
   echo "[ERROR] $1" >&2
 }
+
+log_warn() {
+  echo "[WARN] $1" >&2
+}
