@@ -36,10 +36,16 @@ altertable configure --basic-token "$(printf '%s' user:pass | base64)"
 altertable configure --api-key atm_xxxx --env production
 printf '%s' "$KEY" | altertable configure --api-key-stdin --env production
 
+# ...point the CLI at a non-production deployment (endpoints are stored with the credential):
+altertable configure --api-key atm_xxxx --env production --control-plane-url http://localhost:13000
+altertable configure --user your_username --password your_password --data-plane-url http://localhost:15000
+
 # Inspect (secrets are masked) or clear everything (no prompt):
 altertable configure --show
 altertable configure --clear
 ```
+
+Endpoint flags (`--data-plane-url`, `--control-plane-url`) are only valid alongside a credential; the control-plane URL is a server root (the CLI appends `/rest/v1`). Omitting an endpoint on a later `configure` resets it to the production default.
 
 Where things are stored:
 
@@ -81,15 +87,15 @@ Or via environment variables (these take precedence over stored config):
 ```bash
 export ALTERTABLE_API_KEY="atm_xxxx"
 export ALTERTABLE_ENV="production"
-# Override the API base (e.g. for staging/self-hosted):
-# export ALTERTABLE_MANAGEMENT_API_BASE="https://app.altertable.ai/rest/v1"
+# Override the control-plane server root (the CLI appends /rest/v1):
+# export ALTERTABLE_MANAGEMENT_API_BASE="https://app.altertable.ai"
 ```
 
 The relevant environment variables:
 
 - `ALTERTABLE_API_KEY` — management API key (`atm_` token) for `whoami`/`catalogs`; overrides stored config.
 - `ALTERTABLE_ENV` — environment slug for `catalogs`; overrides the stored `api_key_env`.
-- `ALTERTABLE_MANAGEMENT_API_BASE` — management API base URL (default `https://app.altertable.ai/rest/v1`).
+- `ALTERTABLE_MANAGEMENT_API_BASE` — control-plane server root; the CLI appends `/rest/v1` (default `https://app.altertable.ai`).
 
 These commands require `jq`.
 
