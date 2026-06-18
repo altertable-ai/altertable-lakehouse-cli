@@ -71,5 +71,38 @@ ERR="$(ALTERTABLE_ENV='' "${CLI}" catalogs create --engine altertable --name "X"
 echo "${ERR}" | grep -Fq "No environment set" || fail "create: expected env-required error, got '${ERR}'"
 pass "catalogs create requires an environment"
 
+# ── list: calls databases then connections, databases first in the table ──
+setup_cat_mock
+OUT="$("${CLI}" catalogs list 2>/dev/null)"
+# Both endpoints were called, databases before connections.
+DB_URL_LINE="$(grep -n '^URL=.*/databases$' "${_C_LOG}" | head -1 | cut -d: -f1)"
+CONN_URL_LINE="$(grep -n '^URL=.*/connections$' "${_C_LOG}" | head -1 | cut -d: -f1)"
+teardown_cat_mock
+[[ -n "$DB_URL_LINE" && -n "$CONN_URL_LINE" ]] || fail "list: expected both /databases and /connections calls"
+[[ "$DB_URL_LINE" -lt "$CONN_URL_LINE" ]] || fail "list: /databases must be called before /connections"
+# Output: header + database row before connection row.
+echo "${OUT}" | grep -Eq '^TYPE[[:space:]]+NAME[[:space:]]+SLUG[[:space:]]+ENGINE[[:space:]]+CATALOG' || fail "list: missing header: '${OUT}'"
+DB_OUT_LINE="$(echo "${OUT}" | grep -n 'database' | head -1 | cut -d: -f1)"
+CONN_OUT_LINE="$(echo "${OUT}" | grep -n 'connection' | head -1 | cut -d: -f1)"
+[[ -n "$DB_OUT_LINE" && -n "$CONN_OUT_LINE" && "$DB_OUT_LINE" -lt "$CONN_OUT_LINE" ]] || fail "list: databases must render before connections: '${OUT}'"
+pass "catalogs list shows databases before connections in a table"
+
+# ── list: a non-2xx (e.g. 404 from /databases) hard-fails ──
+setup_cat_404() {
+  _C="$(mktemp -d)"; _CSP="${PATH}"
+  cat > "${_C}/curl" <<'MOCK'
+#!/usr/bin/env bash
+out=""; prev=""
+for arg in "$@"; do case "$prev" in -o) out="$arg";; esac; prev="$arg"; done
+[[ -n "$out" ]] && printf '{"error":{"code":"not_found"}}' > "$out"
+printf '404'
+MOCK
+  chmod +x "${_C}/curl"; export PATH="${_C}:${PATH}"
+}
+setup_cat_404
+if "${CLI}" catalogs list >/dev/null 2>&1; then export PATH="${_CSP}"; rm -rf "${_C}"; fail "list: a 404 must hard-fail"; fi
+export PATH="${_CSP}"; rm -rf "${_C}"
+pass "catalogs list hard-fails on a non-2xx response"
+
 echo ""
 echo -e "${GREEN}All catalogs tests passed.${NC}"
