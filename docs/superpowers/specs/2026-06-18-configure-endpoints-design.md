@@ -10,10 +10,13 @@ once instead of exporting environment variables on every call.
 
 ```bash
 altertable configure --api-key atm_xxx --env production \
-  --control-plane-url http://localhost:13000/rest/v1
+  --control-plane-url http://localhost:13000
 altertable configure --user u --password p \
   --data-plane-url http://localhost:15000
 ```
+
+The control-plane URL is the **server root** — the CLI appends the constant `/rest/v1`
+API path itself, so the user never types it.
 
 ## Background
 
@@ -26,6 +29,12 @@ built-in default:
   `resolve_management_api_base()` in `src/lib/management.sh` →
   `${ALTERTABLE_MANAGEMENT_API_BASE:-https://app.altertable.ai/rest/v1}`.
 
+This change also revises the control-plane resolver (added earlier in this branch, not yet
+released): the configured value — env var, stored config, or `--control-plane-url` flag —
+becomes the **server root without `/rest/v1`**, and the resolver appends the constant
+`/rest/v1` API path. The data plane has no such version path (its endpoints, e.g. `/query`,
+attach directly to the host), so the data-plane URL stays a full base.
+
 `configure` already follows a **single-override model**: every credential-setting
 invocation first calls `configure_clear_all` (wiping all stored config + credentials) and
 then writes exactly one credential mechanism. This change extends that model to endpoints —
@@ -36,8 +45,10 @@ a `configure` call describes the complete desired state, endpoints included.
 Two new optional flags on the `configure` command:
 
 - `--data-plane-url <url>` — data-plane base URL (default `https://api.altertable.ai`).
-- `--control-plane-url <url>` — control-plane/management base URL (default
-  `https://app.altertable.ai/rest/v1`).
+  Used as the full base; endpoints attach directly (e.g. `<url>/query`).
+- `--control-plane-url <url>` — control-plane server root (default
+  `https://app.altertable.ai`). The CLI appends `/rest/v1`, so the effective management
+  base is `<url>/rest/v1`. The user does **not** include `/rest/v1`.
 
 ## Behavior
 
@@ -54,8 +65,9 @@ Two new optional flags on the `configure` command:
   credential-setting `configure` calls `configure_clear_all` first, **omitting an endpoint
   resets it to the production default.** Endpoints provided in the same call are written
   after the clear.
-- **Trailing-slash trimming.** A single trailing `/` is stripped from each stored endpoint
-  so appended paths (e.g. `/whoami`, `/query`) don't produce `//`.
+- **Trailing-slash trimming.** A single trailing `/` is stripped during resolution (covers
+  env var, stored value, and default) so appended paths (e.g. `/rest/v1`, `/query`) don't
+  produce `//`.
 - **Interactive mode unchanged.** The interactive flow (`configure` with no flags) stays
   lakehouse-credential-only; it does not prompt for endpoints, which therefore default.
 
@@ -64,14 +76,32 @@ Two new optional flags on the `configure` command:
 A stored-config layer is inserted between the environment variable and the built-in
 default. Precedence (highest first): **environment variable → stored config → default.**
 
-- `resolve_api_base()` (`src/lib/config.sh`):
+- `resolve_api_base()` (`src/lib/config.sh`) — full base, trailing slash trimmed:
   `ALTERTABLE_API_BASE` → `config_get api_base` → `https://api.altertable.ai`.
-- `resolve_management_api_base()` (`src/lib/management.sh`):
-  `ALTERTABLE_MANAGEMENT_API_BASE` → `config_get management_api_base` →
-  `https://app.altertable.ai/rest/v1`.
+- `resolve_management_api_base()` (`src/lib/management.sh`) — resolves a **server root**
+  (`ALTERTABLE_MANAGEMENT_API_BASE` → `config_get management_api_base` →
+  `https://app.altertable.ai`), trims a trailing slash, then returns `<root>/rest/v1`.
+
+So `resolve_management_api_base` still returns the full management base ending in `/rest/v1`
+— callers (`management_request`, the whoami/catalogs commands) are unchanged. Only the
+*input* semantics change: the configured value is now the root without `/rest/v1`.
 
 `resolve_management_api_base()` depends on `config_get` (defined in `config.sh`); both libs
 are auto-bundled together by bashly, so the dependency resolves at runtime.
+
+### Knock-on changes to the already-built management feature
+
+The control-plane env var was introduced earlier in this branch expecting `/rest/v1` in the
+value. Two committed artifacts must be updated to the new root semantics:
+
+- `tests/management_test.sh`: the precedence case currently sets
+  `ALTERTABLE_MANAGEMENT_API_BASE=http://localhost:9/rest/v1` and expects
+  `http://localhost:9/rest/v1/whoami`. Change it to set
+  `ALTERTABLE_MANAGEMENT_API_BASE=http://localhost:9` and expect the same
+  `http://localhost:9/rest/v1/whoami`.
+- `README.md`: the example override `export ALTERTABLE_MANAGEMENT_API_BASE="https://app.altertable.ai/rest/v1"`
+  becomes `export ALTERTABLE_MANAGEMENT_API_BASE="https://app.altertable.ai"`, with a note
+  that the CLI appends `/rest/v1`.
 
 ## `--show`
 
@@ -90,10 +120,13 @@ along with everything else.
 Extend `tests/configure_test.sh` (offline, file secret backend) with cases:
 
 1. **Stored with a credential:** `configure --api-key atm_x --env prod
-   --control-plane-url http://localhost:13000/rest/v1` writes
-   `management_api_base=http://localhost:13000/rest/v1` to the config file; and
+   --control-plane-url http://localhost:13000` writes
+   `management_api_base=http://localhost:13000` to the config file (no `/rest/v1`); and
    `configure --user u --password p --data-plane-url http://localhost:15000` writes
    `api_base=http://localhost:15000`.
+1b. **Control-plane URL gains `/rest/v1` at request time:** with
+   `management_api_base=http://localhost:13000` stored, `altertable whoami` calls the URL
+   `http://localhost:13000/rest/v1/whoami` (assert via a curl mock that logs the URL).
 2. **Endpoint without a credential errors:** `configure --data-plane-url http://x` exits
    non-zero with `endpoint flags must be set together with a credential.`
 3. **Omitted endpoint resets to default:** after storing a custom `api_base`, a subsequent
@@ -102,8 +135,8 @@ Extend `tests/configure_test.sh` (offline, file secret backend) with cases:
 4. **Env var beats stored config:** with `api_base` stored, `ALTERTABLE_API_BASE=...` is the
    URL curl is called with (assert via the existing curl mock that logs the request URL —
    extend the mock to capture the URL, or add a focused check).
-5. **Trailing slash trimmed:** `--control-plane-url http://localhost:13000/rest/v1/` stores
-   `http://localhost:13000/rest/v1` (no trailing slash).
+5. **Trailing slash trimmed:** `--control-plane-url http://localhost:13000/` resolves to a
+   management base of `http://localhost:13000/rest/v1` (no `//`).
 6. **`--show` displays both planes:** output contains a `Data plane:` line and a
    `Control plane:` line.
 
