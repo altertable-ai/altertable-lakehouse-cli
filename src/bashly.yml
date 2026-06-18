@@ -169,3 +169,25 @@ commands:
   help: Show the authenticated principal and organization (management API).
   flags:
   - *debug_flag
+
+- name: catalogs
+  help: Manage catalogs (databases and connections) in the current environment.
+  commands:
+  - name: create
+    help: Create a catalog. Only the 'altertable' engine is supported.
+    examples:
+    - altertable catalogs create --engine altertable --name "My Cat"
+    flags:
+    - long: --engine
+      arg: name
+      help: Catalog engine (only 'altertable' is supported)
+      required: true
+    - long: --name
+      arg: name
+      help: Catalog name
+      required: true
+    - *debug_flag
+  - name: list
+    help: List catalogs (databases and connections) in the current environment.
+    flags:
+    - *debug_flag

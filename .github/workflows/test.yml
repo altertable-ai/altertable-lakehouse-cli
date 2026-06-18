@@ -81,5 +81,8 @@ jobs:
       - name: Run Whoami Tests
         run: ./tests/whoami_test.sh
 
+      - name: Run Catalogs Tests
+        run: ./tests/catalogs_test.sh
+
       - name: Run Integration Tests
         run: ./tests/integration_test.sh

@@ -34,6 +34,7 @@ altertable_usage() {
   printf "  %s   Cancel a running query.\n" "cancel   "
   printf "  %s   Configure and securely store credentials and settings.\n" "configure"
   printf "  %s   Show the authenticated principal and organization (management API).\n" "whoami   "
+  printf "  %s   Manage catalogs (databases and connections) in the current environment.\n" "catalogs "
   echo
 
   # :command.long_usage
@@ -453,6 +454,104 @@ altertable_whoami_usage() {
   printf "%s\n" "Usage:"
   printf "  altertable whoami [OPTIONS]\n"
   printf "  altertable whoami --help | -h\n"
+  echo
+
+  # :command.long_usage
+  if [[ -n "$long_usage" ]]; then
+    # :command.usage_options
+    printf "%s\n" "Options:"
+
+    # :command.usage_flags
+    # :flag.usage
+    printf "  %s\n" "--debug"
+    printf "    Enable debug output\n"
+    echo
+
+    # :command.usage_fixed_flags
+    printf "  %s\n" "--help, -h"
+    printf "    Show this help\n"
+    echo
+
+  fi
+}
+
+# :command.usage
+altertable_catalogs_usage() {
+  printf "altertable catalogs - Manage catalogs (databases and connections) in the current environment.\n\n"
+
+  printf "%s\n" "Usage:"
+  printf "  altertable catalogs COMMAND\n"
+  printf "  altertable catalogs [COMMAND] --help | -h\n"
+  echo
+  # :command.usage_commands
+  printf "%s\n" "Commands:"
+  printf "  %s   Create a catalog. Only the 'altertable' engine is supported.\n" "create"
+  printf "  %s   List catalogs (databases and connections) in the current environment.\n" "list  "
+  echo
+
+  # :command.long_usage
+  if [[ -n "$long_usage" ]]; then
+    # :command.usage_options
+    printf "%s\n" "Options:"
+
+    # :command.usage_fixed_flags
+    printf "  %s\n" "--help, -h"
+    printf "    Show this help\n"
+    echo
+
+  fi
+}
+
+# :command.usage
+altertable_catalogs_create_usage() {
+  printf "altertable catalogs create - Create a catalog. Only the 'altertable' engine is supported.\n\n"
+
+  printf "%s\n" "Usage:"
+  printf "  altertable catalogs create [OPTIONS]\n"
+  printf "  altertable catalogs create --help | -h\n"
+  echo
+
+  # :command.long_usage
+  if [[ -n "$long_usage" ]]; then
+    # :command.usage_options
+    printf "%s\n" "Options:"
+
+    # :command.usage_flags
+    # :flag.usage
+    printf "  %s\n" "--engine NAME (required)"
+    printf "    Catalog engine (only 'altertable' is supported)\n"
+    echo
+
+    # :flag.usage
+    printf "  %s\n" "--name NAME (required)"
+    printf "    Catalog name\n"
+    echo
+
+    # :flag.usage
+    printf "  %s\n" "--debug"
+    printf "    Enable debug output\n"
+    echo
+
+    # :command.usage_fixed_flags
+    printf "  %s\n" "--help, -h"
+    printf "    Show this help\n"
+    echo
+
+    # :command.usage_examples
+    printf "%s\n" "Examples:"
+    printf "  altertable catalogs create --engine altertable --name \"My Cat\"\n"
+    echo
+
+  fi
+}
+
+# :command.usage
+altertable_catalogs_list_usage() {
+  printf "altertable catalogs list - List catalogs (databases and connections) in the current environment.\n\n"
+
+  printf "%s\n" "Usage:"
+  printf "  altertable catalogs list [OPTIONS]\n"
+  printf "  altertable catalogs list --help | -h\n"
   echo
 
   # :command.long_usage
@@ -1205,6 +1304,45 @@ altertable_whoami_command() {
 
 }
 
+# :command.function
+altertable_catalogs_create_command() {
+
+  # src/catalogs_create_command.sh
+  require_jq
+
+  engine="${args[--engine]}"
+  name="${args[--name]}"
+
+  if [[ "$engine" != "altertable" ]]; then
+    log_error "Only the 'altertable' engine is supported (got '${engine}')."
+    exit 1
+  fi
+
+  env="$(require_management_env)"
+  body="$(jq -cn --arg name "$name" '{name: $name, engine: "altertable"}')"
+
+  response="$(management_request "POST" "/environments/${env}/databases" "$body")"
+
+  cslug="$(printf '%s' "$response" | jq -r '(.database // .connection).slug // empty')"
+  cname="$(printf '%s' "$response" | jq -r '(.database // .connection).name // empty')"
+  cengine="$(printf '%s' "$response" | jq -r '(.database // .connection).engine // "altertable"')"
+  [[ -z "$cname" ]] && cname="$name"
+
+  printf 'Created catalog "%s" (slug: %s, engine: %s, environment: %s).\n' \
+    "$cname" "$cslug" "$cengine" "$env"
+
+}
+
+# :command.function
+altertable_catalogs_list_command() {
+
+  # src/catalogs_list_command.sh
+  require_jq
+  log_error "Not implemented yet."
+  exit 1
+
+}
+
 # :command.parse_requirements
 parse_requirements() {
   local key
@@ -1307,6 +1445,13 @@ parse_requirements() {
       action="whoami"
       shift
       altertable_whoami_parse_requirements "$@"
+      shift $#
+      ;;
+
+    catalogs)
+      action="catalogs"
+      shift
+      altertable_catalogs_parse_requirements "$@"
       shift $#
       ;;
 
@@ -2251,6 +2396,229 @@ altertable_whoami_parse_requirements() {
 
 }
 
+# :command.parse_requirements
+altertable_catalogs_parse_requirements() {
+  local key
+
+  # :command.fixed_flags_filter
+  while [[ $# -gt 0 ]]; do
+    key="$1"
+    case "$key" in
+      --help | -h)
+        long_usage=yes
+        altertable_catalogs_usage
+        exit
+        ;;
+
+      *)
+        break
+        ;;
+
+    esac
+  done
+
+  # :command.command_filter
+  action=${1:-}
+
+  case $action in
+    -*) ;;
+
+    create)
+      action="create"
+      shift
+      altertable_catalogs_create_parse_requirements "$@"
+      shift $#
+      ;;
+
+    list)
+      action="list"
+      shift
+      altertable_catalogs_list_parse_requirements "$@"
+      shift $#
+      ;;
+
+    # :command.command_fallback
+    "")
+      altertable_catalogs_usage >&2
+      exit 1
+      ;;
+
+    *)
+      printf "invalid command: %s\n" "$action" >&2
+      exit 1
+      ;;
+
+  esac
+
+  # :command.parse_requirements_while
+  while [[ $# -gt 0 ]]; do
+    key="$1"
+    case "$key" in
+
+      -?*)
+        printf "invalid option: %s\n" "$key" >&2
+        exit 1
+        ;;
+
+      *)
+        # :command.parse_requirements_case
+        # :command.parse_requirements_case_simple
+        printf "invalid argument: %s\n" "$key" >&2
+        exit 1
+
+        ;;
+
+    esac
+  done
+
+}
+
+# :command.parse_requirements
+altertable_catalogs_create_parse_requirements() {
+  local key
+
+  # :command.fixed_flags_filter
+  while [[ $# -gt 0 ]]; do
+    key="$1"
+    case "$key" in
+      --help | -h)
+        long_usage=yes
+        altertable_catalogs_create_usage
+        exit
+        ;;
+
+      *)
+        break
+        ;;
+
+    esac
+  done
+
+  # :command.command_filter
+  action="catalogs create"
+
+  # :command.parse_requirements_while
+  while [[ $# -gt 0 ]]; do
+    key="$1"
+    case "$key" in
+      # :flag.case
+      --engine)
+
+        # :flag.case_arg
+        if [[ -n ${2+x} ]]; then
+          args['--engine']="$2"
+          shift
+          shift
+        else
+          printf "%s\n" "--engine requires an argument: --engine NAME" >&2
+          exit 1
+        fi
+        ;;
+
+      # :flag.case
+      --name)
+
+        # :flag.case_arg
+        if [[ -n ${2+x} ]]; then
+          args['--name']="$2"
+          shift
+          shift
+        else
+          printf "%s\n" "--name requires an argument: --name NAME" >&2
+          exit 1
+        fi
+        ;;
+
+      # :flag.case
+      --debug)
+
+        # :flag.case_no_arg
+        args['--debug']=1
+        shift
+        ;;
+
+      -?*)
+        printf "invalid option: %s\n" "$key" >&2
+        exit 1
+        ;;
+
+      *)
+        # :command.parse_requirements_case
+        # :command.parse_requirements_case_simple
+        printf "invalid argument: %s\n" "$key" >&2
+        exit 1
+
+        ;;
+
+    esac
+  done
+
+  # :command.required_flags_filter
+  if [[ -z ${args['--engine']+x} ]]; then
+    printf "missing required flag: --engine NAME\n" >&2
+    exit 1
+  fi
+  if [[ -z ${args['--name']+x} ]]; then
+    printf "missing required flag: --name NAME\n" >&2
+    exit 1
+  fi
+
+}
+
+# :command.parse_requirements
+altertable_catalogs_list_parse_requirements() {
+  local key
+
+  # :command.fixed_flags_filter
+  while [[ $# -gt 0 ]]; do
+    key="$1"
+    case "$key" in
+      --help | -h)
+        long_usage=yes
+        altertable_catalogs_list_usage
+        exit
+        ;;
+
+      *)
+        break
+        ;;
+
+    esac
+  done
+
+  # :command.command_filter
+  action="catalogs list"
+
+  # :command.parse_requirements_while
+  while [[ $# -gt 0 ]]; do
+    key="$1"
+    case "$key" in
+      # :flag.case
+      --debug)
+
+        # :flag.case_no_arg
+        args['--debug']=1
+        shift
+        ;;
+
+      -?*)
+        printf "invalid option: %s\n" "$key" >&2
+        exit 1
+        ;;
+
+      *)
+        # :command.parse_requirements_case
+        # :command.parse_requirements_case_simple
+        printf "invalid argument: %s\n" "$key" >&2
+        exit 1
+
+        ;;
+
+    esac
+  done
+
+}
+
 # :command.initialize
 initialize() {
   declare -g version="0.4.0"
@@ -2279,6 +2647,9 @@ run() {
     "cancel") altertable_cancel_command ;;
     "configure") altertable_configure_command ;;
     "whoami") altertable_whoami_command ;;
+    "catalogs") altertable_catalogs_command ;;
+    "catalogs create") altertable_catalogs_create_command ;;
+    "catalogs list") altertable_catalogs_list_command ;;
   esac
 }
 
