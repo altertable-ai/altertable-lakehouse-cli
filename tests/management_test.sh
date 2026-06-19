@@ -76,6 +76,48 @@ grep -q '^URL=http://localhost:8/rest/v1/whoami$' "${_M_LOG}" || fail "mgmt: tra
 teardown_mgmt_curl_mock
 pass "a trailing slash on the control-plane root is trimmed"
 
+# A fake curl returning a configurable status (_MOCK_STATUS) and body (_MOCK_BODY).
+setup_status_mock() {
+  _S_DIR="$(mktemp -d)"
+  cat > "${_S_DIR}/curl" <<'MOCK'
+#!/usr/bin/env bash
+out=""; prev=""
+for arg in "$@"; do case "$prev" in -o) out="$arg";; esac; prev="$arg"; done
+[[ -n "$out" ]] && printf '%s' "${_MOCK_BODY}" > "$out"
+printf '%s' "${_MOCK_STATUS}"
+MOCK
+  chmod +x "${_S_DIR}/curl"
+  _S_SAVED_PATH="${PATH}"
+  export PATH="${_S_DIR}:${PATH}"
+}
+teardown_status_mock() { export PATH="${_S_SAVED_PATH}"; rm -rf "${_S_DIR}"; }
+
+# Need a configured key for these (whoami reaches the request stage).
+"${CLI}" configure --api-key atm_stored --env production >/dev/null 2>&1
+
+# ── 500 with an HTML body: friendly message, HTML never leaked ──
+setup_status_mock
+ERR="$(_MOCK_STATUS=500 _MOCK_BODY='<html><body>Internal Server Error</body></html>' "${CLI}" whoami 2>&1 >/dev/null)"
+teardown_status_mock
+echo "${ERR}" | grep -q "Server error (500)" || fail "500: expected friendly server error, got '${ERR}'"
+echo "${ERR}" | grep -q "<html>" && fail "500: HTML body must not be displayed, got '${ERR}'"
+pass "a 5xx HTML error page shows a friendly message and never leaks the HTML"
+
+# ── 401 with a JSON body: friendly message + extracted message ──
+setup_status_mock
+ERR="$(_MOCK_STATUS=401 _MOCK_BODY='{"error":{"message":"invalid api key"}}' "${CLI}" whoami 2>&1 >/dev/null)"
+teardown_status_mock
+echo "${ERR}" | grep -q "Authentication failed (401)" || fail "401: expected auth-failed message, got '${ERR}'"
+echo "${ERR}" | grep -q "invalid api key" || fail "401: expected extracted JSON message, got '${ERR}'"
+pass "a 401 shows an authentication message and the JSON error detail"
+
+# ── 404 with a JSON body lacking a message: friendly message, no HTML leak ──
+setup_status_mock
+ERR="$(_MOCK_STATUS=404 _MOCK_BODY='{"error":{"code":"not_found"}}' "${CLI}" whoami 2>&1 >/dev/null)"
+teardown_status_mock
+echo "${ERR}" | grep -q "Not found (404)" || fail "404: expected not-found message, got '${ERR}'"
+pass "a 404 shows a not-found message"
+
 # ── no api-key configured → clear error ──
 "${CLI}" configure --clear >/dev/null 2>&1
 ERR="$("${CLI}" whoami 2>&1 >/dev/null)"

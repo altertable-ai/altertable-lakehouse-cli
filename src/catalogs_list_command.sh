@@ -9,7 +9,7 @@ rows="$(
   {
     printf '%s' "$databases" | jq -r '
       (.databases // [])[] |
-      ["database", (.name // ""), (.slug // ""), (.engine // ""), (.catalog // "")] | @tsv'
+      ["database", (.name // ""), (.slug // ""), "altertable", (.catalog // "")] | @tsv'
     printf '%s' "$connections" | jq -r '
       (.connections // [])[] |
       ["connection", (.name // ""), (.slug // ""), (.engine // ""), (.catalog // "")] | @tsv'

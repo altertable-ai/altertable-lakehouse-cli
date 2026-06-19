@@ -91,12 +91,6 @@ export ALTERTABLE_ENV="production"
 # export ALTERTABLE_MANAGEMENT_API_BASE="https://app.altertable.ai"
 ```
 
-The relevant environment variables:
-
-- `ALTERTABLE_API_KEY` — management API key (`atm_` token) for `whoami`/`catalogs`; overrides stored config.
-- `ALTERTABLE_ENV` — environment slug for `catalogs`; overrides the stored `api_key_env`.
-- `ALTERTABLE_MANAGEMENT_API_BASE` — control-plane server root; the CLI appends `/rest/v1` (default `https://app.altertable.ai`).
-
 These commands require `jq`.
 
 ### whoami
@@ -116,7 +110,7 @@ to the current environment.
 # Create a catalog (only the 'altertable' engine is supported):
 altertable catalogs create --engine altertable --name "My Cat"
 
-# List catalogs (databases first, then connections):
+# List catalogs:
 altertable catalogs list
 # TYPE        NAME     SLUG     ENGINE      CATALOG
 # database    My Cat   my-cat   altertable  my_cat

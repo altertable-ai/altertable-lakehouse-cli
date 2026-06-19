@@ -87,6 +87,36 @@ CONN_OUT_LINE="$(echo "${OUT}" | grep -n 'connection' | head -1 | cut -d: -f1)"
 [[ -n "$DB_OUT_LINE" && -n "$CONN_OUT_LINE" && "$DB_OUT_LINE" -lt "$CONN_OUT_LINE" ]] || fail "list: databases must render before connections: '${OUT}'"
 pass "catalogs list shows databases before connections in a table"
 
+# ── list: databases always render the hardcoded "altertable" engine ──
+setup_cat_db_engine() {
+  _C="$(mktemp -d)"; _CSP="${PATH}"
+  cat > "${_C}/curl" <<'MOCK'
+#!/usr/bin/env bash
+url=""; out=""; prev=""
+for arg in "$@"; do
+  case "$prev" in -o) out="$arg";; esac
+  case "$arg" in http*://*) url="$arg";; esac
+  prev="$arg"
+done
+body='{}'
+case "$url" in
+  *"/databases")   body='{"databases":[{"name":"My Cat","slug":"my-cat","engine":"postgres","catalog":"my_cat"}]}';;
+  *"/connections") body='{"connections":[{"name":"Prod PG","slug":"prod-pg","engine":"postgres","catalog":"prod_pg"}]}';;
+esac
+[[ -n "$out" ]] && printf '%s' "$body" > "$out"
+printf '200'
+MOCK
+  chmod +x "${_C}/curl"; export PATH="${_C}:${PATH}"
+}
+setup_cat_db_engine
+OUT="$("${CLI}" catalogs list 2>/dev/null)"
+export PATH="${_CSP}"; rm -rf "${_C}"
+# The database row reports altertable despite the API returning "postgres"...
+echo "${OUT}" | grep -E '^database[[:space:]]' | grep -q 'altertable' || fail "list: database engine must be hardcoded altertable: '${OUT}'"
+# ...while the connection keeps its real engine.
+echo "${OUT}" | grep -E '^connection[[:space:]]' | grep -q 'postgres' || fail "list: connection engine must be preserved: '${OUT}'"
+pass "catalogs list always shows the altertable engine for databases"
+
 # ── list: a non-2xx (e.g. 404 from /databases) hard-fails ──
 setup_cat_404() {
   _C="$(mktemp -d)"; _CSP="${PATH}"

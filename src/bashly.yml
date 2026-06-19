@@ -194,6 +194,6 @@ commands:
       required: true
     - *debug_flag
   - name: list
-    help: List catalogs (databases and connections) in the current environment.
+    help: List catalogs in the current environment.
     flags:
     - *debug_flag
