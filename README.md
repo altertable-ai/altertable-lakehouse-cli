@@ -6,7 +6,7 @@ A Bash-based CLI for the Altertable Lakehouse API.
 
 - `bash` (4.2+)
 - `curl`
-- `jq` (optional but recommended for pretty-printing and robust JSON handling)
+- `jq`
 
 ## Installation
 
@@ -17,60 +17,99 @@ cp bin/altertable /usr/local/bin/altertable
 chmod +x /usr/local/bin/altertable
 ```
 
-## Configuration
+## Usage
 
-`altertable configure` stores a credential securely. It holds **one** credential at a
-time — each `configure` **replaces** the previous one, so authentication mechanisms are
-never combined.
+### Authentication
+
+`altertable configure` allows you to authenticate using the following mechanisms:
+ - Management API key (`--api-key`) and a specified environment (`--env`)
+ - Lakehouse credentials (`--user` and `--password`)
+
+For any authentication mechanism, environment variables take precedence over stored
+configuration, which keeps CI and scripted usage working unchanged.
+
+Inspect the stored configuration (secrets are masked) or clear everything (no prompt):
 
 ```bash
-# Lakehouse username/password. With no flags you're prompted (password input is hidden):
+altertable configure --show
+altertable configure --clear
+```
+
+#### REST API Key
+
+The [management commands](#management-commands) (`whoami`, `catalogs`) authenticate with a
+**management API key** — a `Bearer` `atm_` token. `configure`
+requires `--env` alongside the key:
+
+```bash
+altertable configure --api-key atm_xxxx --env production
+printf '%s' "$KEY" | altertable configure --api-key-stdin --env production
+```
+
+Or via environment variables (these take precedence over stored config):
+
+```bash
+export ALTERTABLE_API_KEY="atm_xxxx"
+export ALTERTABLE_ENV="production"
+```
+
+#### Lakehouse credentials
+
+The [lakehouse commands](#lakehouse-commands) (`query`, `append`, `upload`, …) authenticate
+with a lakehouse username/password. Unlike a [REST API key](#rest-api-key),
+these credentials are issued for a specific environment, so the commands automatically
+target that credential's environment:
+
+```bash
 altertable configure
 altertable configure --user your_username --password your_password
 printf '%s' "$PASSWORD" | altertable configure --user your_username --password-stdin
 
 # ...or a pre-encoded HTTP Basic token:
 altertable configure --basic-token "$(printf '%s' user:pass | base64)"
-
-# ...or a management API key for a given environment:
-altertable configure --api-key atm_xxxx --env production
-printf '%s' "$KEY" | altertable configure --api-key-stdin --env production
-
-# Inspect (secrets are masked) or clear everything (no prompt):
-altertable configure --show
-altertable configure --clear
 ```
 
-Where things are stored:
-
-- **Non-secret config** (username, api-key environment): `~/.config/altertable/config`.
-- **Secret** (password, Basic token, or API key): the **macOS Keychain** when available,
-  otherwise a `~/.config/altertable/credentials` file with `chmod 600`. Force a backend
-  with `ALTERTABLE_SECRET_BACKEND=keychain|file`. `altertable configure --show` shows
-  which is in use (`MacOS keychain` or the file path). For security, the CLI **refuses to
-  read the credentials file if its permissions are looser than `600`** — run
-  `chmod 600 ~/.config/altertable/credentials` if prompted.
-
-Credential precedence (highest first): environment variables
-(`ALTERTABLE_BASIC_AUTH_TOKEN`, `ALTERTABLE_LAKEHOUSE_USERNAME`/`_PASSWORD`) →
-stored configuration. This keeps CI and scripted usage working unchanged:
+Or via environment variables (these take precedence over stored config):
 
 ```bash
 export ALTERTABLE_LAKEHOUSE_USERNAME="your_lakehouse_username"
 export ALTERTABLE_LAKEHOUSE_PASSWORD="your_lakehouse_password"
 # Or use a pre-encoded token
-# export ALTERTABLE_BASIC_AUTH_TOKEN="base64-token"
+export ALTERTABLE_BASIC_AUTH_TOKEN="base64-token"
 ```
 
-## Usage
+### Management commands
 
-### Run a Query
+#### whoami
+
+```bash
+altertable whoami
+# User: Jane Doe <jane@example.com>
+# Organization: Acme (acme)
+```
+
+#### catalogs
+
+```bash
+# Create a catalog:
+altertable catalogs create --engine altertable --name "My Cat"
+
+# List catalogs:
+altertable catalogs list
+# TYPE        NAME     SLUG     ENGINE      CATALOG
+# database    My Cat   my-cat   altertable  my_cat
+# connection  Prod PG  prod-pg  postgres    prod_pg
+```
+
+### Lakehouse commands
+
+#### Run a Query
 
 ```bash
 altertable query --statement "SELECT * FROM users LIMIT 10"
 ```
 
-### Append Data
+#### Append Data
 
 ```bash
 # Append a single record
@@ -83,7 +122,7 @@ altertable append --catalog my_cat --schema public --table users --data '[{"id":
 altertable append --catalog my_cat --schema public --table users --data @records.json
 ```
 
-### Upload a File
+#### Upload a File
 
 ```bash
 altertable upload \
@@ -95,19 +134,19 @@ altertable upload \
   --file data.csv
 ```
 
-### Get Query Details
+#### Get Query Details
 
 ```bash
 altertable get-query "query-uuid"
 ```
 
-### Cancel a Query
+#### Cancel a Query
 
 ```bash
 altertable cancel --query-id "query-uuid" --session-id "session-uuid"
 ```
 
-### Validate SQL
+#### Validate SQL
 
 ```bash
 altertable validate --statement "SELECT * FROM users"
@@ -115,33 +154,8 @@ altertable validate --statement "SELECT * FROM users"
 
 ## Development
 
-The CLI is generated with [bashly](https://bashly.dev). The source of truth is the
-`src/` directory; `bin/altertable` is a generated artifact and must not be edited
-by hand.
-
-```bash
-# Install the toolchain (Ruby + Bundler required)
-bundle install
-
-# Edit src/bashly.yml (commands/flags) or src/*_command.sh / src/lib/*.sh (logic),
-# then regenerate and commit both the source and the generated binary:
-bundle exec bashly generate
-git add src bin/altertable
-```
-
-The version lives in `src/bashly.yml` and is bumped automatically by release-please.
-
-### Tests
-
-Integration tests run against the Altertable mock server:
-
-```bash
-docker run -d --rm --name at-mock -p 15000:15000 \
-  -e ALTERTABLE_MOCK_USERS=testuser:testpass \
-  ghcr.io/altertable-ai/altertable-mock:latest
-./tests/integration_test.sh
-docker stop at-mock
-```
+See [DEVELOPMENT.md](DEVELOPMENT.md) for building the CLI, targeting a local deployment, and
+running the tests.
 
 ## License
 

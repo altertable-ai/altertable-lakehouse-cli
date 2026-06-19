@@ -9,6 +9,8 @@ configure_clear_all() {
   secret_delete "api-key"
   config_unset user
   config_unset api_key_env
+  config_unset api_base
+  config_unset management_api_base
 }
 
 configure_run_set() {
@@ -19,9 +21,11 @@ configure_run_set() {
   local env="${args[--env]:-}"
   local want_pw_stdin="${args[--password-stdin]:-}"
   local want_key_stdin="${args[--api-key-stdin]:-}"
+  local data_plane_url="${args[--data-plane-url]:-}"
+  local control_plane_url="${args[--control-plane-url]:-}"
 
   # No input at all -> interactive lakehouse setup.
-  if [[ -z "$user$password$basic_token$api_key$env$want_pw_stdin$want_key_stdin" ]]; then
+  if [[ -z "$user$password$basic_token$api_key$env$want_pw_stdin$want_key_stdin$data_plane_url$control_plane_url" ]]; then
     configure_run_interactive
     return 0
   fi
@@ -40,6 +44,10 @@ configure_run_set() {
 
   if [[ "$count" -gt 1 ]]; then
     log_error "Choose a single authentication mechanism: --user/--password, --basic-token, or --api-key (they cannot be combined)."
+    exit 1
+  fi
+  if [[ ( -n "$data_plane_url" || -n "$control_plane_url" ) && "$count" -eq 0 ]]; then
+    log_error "endpoint flags must be set together with a credential."
     exit 1
   fi
   if [[ -n "$env" && -z "$m_apikey" ]]; then
@@ -70,6 +78,8 @@ configure_run_set() {
     config_set user "$user"
     secret_set "lakehouse/password" "$password"
   fi
+  [[ -n "$data_plane_url" ]] && config_set api_base "$data_plane_url"
+  [[ -n "$control_plane_url" ]] && config_set management_api_base "$control_plane_url"
   printf 'Configuration updated.\n' >&2
 }
 
@@ -104,6 +114,7 @@ configure_run_show() {
   printf '  Config dir:    %s\n' "$(config_dir)"
   printf '  Secret store:  %s\n' "$store_display"
   printf '  Data plane:    %s\n' "$(resolve_api_base)"
+  printf '  Control plane: %s\n' "$(resolve_management_api_base)"
   printf '\n'
   if secret_exists "api-key"; then
     printf '  Authentication: management API key\n'

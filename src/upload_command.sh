@@ -30,4 +30,4 @@ if [[ -n "${primary_key}" ]]; then
   url_params+="&primary_key=${pk_enc}"
 fi
 
-http_request "POST" "/upsert?${url_params}" "@${file}" "Content-Type: application/octet-stream"
+http_request "POST" "/upload?${url_params}" "@${file}" "Content-Type: application/octet-stream"

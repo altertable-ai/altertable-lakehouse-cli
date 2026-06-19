@@ -33,6 +33,8 @@ altertable_usage() {
   printf "  %s   Fetch metadata for a completed or running query.\n" "get-query"
   printf "  %s   Cancel a running query.\n" "cancel   "
   printf "  %s   Configure and securely store credentials and settings.\n" "configure"
+  printf "  %s   Show the authenticated principal and organization (management API).\n" "whoami   "
+  printf "  %s   Manage catalogs (databases and connections) in the current environment.\n" "catalogs "
   echo
 
   # :command.long_usage
@@ -424,6 +426,16 @@ altertable_configure_usage() {
     echo
 
     # :flag.usage
+    printf "  %s\n" "--data-plane-url URL"
+    printf "    Data-plane base URL (stored with the credential; default:\n    https://api.altertable.ai)\n"
+    echo
+
+    # :flag.usage
+    printf "  %s\n" "--control-plane-url URL"
+    printf "    Control-plane server root; the CLI appends /rest/v1 (default:\n    https://app.altertable.ai)\n"
+    echo
+
+    # :flag.usage
     printf "  %s\n" "--debug"
     printf "    Enable debug output\n"
     echo
@@ -440,6 +452,132 @@ altertable_configure_usage() {
     printf "  altertable configure --api-key atm_xxxx --env production\n"
     printf "  altertable configure --show\n"
     printf "  altertable configure --clear\n"
+    echo
+
+  fi
+}
+
+# :command.usage
+altertable_whoami_usage() {
+  printf "altertable whoami - Show the authenticated principal and organization (management API).\n\n"
+
+  printf "%s\n" "Usage:"
+  printf "  altertable whoami [OPTIONS]\n"
+  printf "  altertable whoami --help | -h\n"
+  echo
+
+  # :command.long_usage
+  if [[ -n "$long_usage" ]]; then
+    # :command.usage_options
+    printf "%s\n" "Options:"
+
+    # :command.usage_flags
+    # :flag.usage
+    printf "  %s\n" "--debug"
+    printf "    Enable debug output\n"
+    echo
+
+    # :command.usage_fixed_flags
+    printf "  %s\n" "--help, -h"
+    printf "    Show this help\n"
+    echo
+
+  fi
+}
+
+# :command.usage
+altertable_catalogs_usage() {
+  printf "altertable catalogs - Manage catalogs (databases and connections) in the current environment.\n\n"
+
+  printf "%s\n" "Usage:"
+  printf "  altertable catalogs COMMAND\n"
+  printf "  altertable catalogs [COMMAND] --help | -h\n"
+  echo
+  # :command.usage_commands
+  printf "%s\n" "Commands:"
+  printf "  %s   Create a catalog. Only the 'altertable' engine is supported.\n" "create"
+  printf "  %s   List catalogs in the current environment.\n" "list  "
+  echo
+
+  # :command.long_usage
+  if [[ -n "$long_usage" ]]; then
+    # :command.usage_options
+    printf "%s\n" "Options:"
+
+    # :command.usage_fixed_flags
+    printf "  %s\n" "--help, -h"
+    printf "    Show this help\n"
+    echo
+
+  fi
+}
+
+# :command.usage
+altertable_catalogs_create_usage() {
+  printf "altertable catalogs create - Create a catalog. Only the 'altertable' engine is supported.\n\n"
+
+  printf "%s\n" "Usage:"
+  printf "  altertable catalogs create [OPTIONS]\n"
+  printf "  altertable catalogs create --help | -h\n"
+  echo
+
+  # :command.long_usage
+  if [[ -n "$long_usage" ]]; then
+    # :command.usage_options
+    printf "%s\n" "Options:"
+
+    # :command.usage_flags
+    # :flag.usage
+    printf "  %s\n" "--engine NAME (required)"
+    printf "    Catalog engine (only 'altertable' is supported)\n"
+    echo
+
+    # :flag.usage
+    printf "  %s\n" "--name NAME (required)"
+    printf "    Catalog name\n"
+    echo
+
+    # :flag.usage
+    printf "  %s\n" "--debug"
+    printf "    Enable debug output\n"
+    echo
+
+    # :command.usage_fixed_flags
+    printf "  %s\n" "--help, -h"
+    printf "    Show this help\n"
+    echo
+
+    # :command.usage_examples
+    printf "%s\n" "Examples:"
+    printf "  altertable catalogs create --engine altertable --name \"My Cat\"\n"
+    echo
+
+  fi
+}
+
+# :command.usage
+altertable_catalogs_list_usage() {
+  printf "altertable catalogs list - List catalogs in the current environment.\n\n"
+
+  printf "%s\n" "Usage:"
+  printf "  altertable catalogs list [OPTIONS]\n"
+  printf "  altertable catalogs list --help | -h\n"
+  echo
+
+  # :command.long_usage
+  if [[ -n "$long_usage" ]]; then
+    # :command.usage_options
+    printf "%s\n" "Options:"
+
+    # :command.usage_flags
+    # :flag.usage
+    printf "  %s\n" "--debug"
+    printf "    Enable debug output\n"
+    echo
+
+    # :command.usage_fixed_flags
+    printf "  %s\n" "--help, -h"
+    printf "    Show this help\n"
     echo
 
   fi
@@ -599,7 +737,12 @@ config_get() { kv_get "$(config_file)" "$1"; }
 config_set() { local f; f="$(config_file)"; kv_set "$f" "$1" "$2"; chmod 600 "$f" 2>/dev/null || true; }
 config_unset() { kv_unset "$(config_file)" "$1"; }
 
-resolve_api_base() { echo "${ALTERTABLE_API_BASE:-https://api.altertable.ai}"; }
+resolve_api_base() {
+  local base="${ALTERTABLE_API_BASE:-}"
+  [[ -z "$base" ]] && base="$(config_get api_base)"
+  [[ -z "$base" ]] && base="https://api.altertable.ai"
+  echo "${base%/}"
+}
 
 # src/lib/configure.sh
 # Operations behind `altertable configure`. These read the global `args` array
@@ -613,6 +756,8 @@ configure_clear_all() {
   secret_delete "api-key"
   config_unset user
   config_unset api_key_env
+  config_unset api_base
+  config_unset management_api_base
 }
 
 configure_run_set() {
@@ -623,9 +768,11 @@ configure_run_set() {
   local env="${args[--env]:-}"
   local want_pw_stdin="${args[--password-stdin]:-}"
   local want_key_stdin="${args[--api-key-stdin]:-}"
+  local data_plane_url="${args[--data-plane-url]:-}"
+  local control_plane_url="${args[--control-plane-url]:-}"
 
   # No input at all -> interactive lakehouse setup.
-  if [[ -z "$user$password$basic_token$api_key$env$want_pw_stdin$want_key_stdin" ]]; then
+  if [[ -z "$user$password$basic_token$api_key$env$want_pw_stdin$want_key_stdin$data_plane_url$control_plane_url" ]]; then
     configure_run_interactive
     return 0
   fi
@@ -644,6 +791,10 @@ configure_run_set() {
 
   if [[ "$count" -gt 1 ]]; then
     log_error "Choose a single authentication mechanism: --user/--password, --basic-token, or --api-key (they cannot be combined)."
+    exit 1
+  fi
+  if [[ ( -n "$data_plane_url" || -n "$control_plane_url" ) && "$count" -eq 0 ]]; then
+    log_error "endpoint flags must be set together with a credential."
     exit 1
   fi
   if [[ -n "$env" && -z "$m_apikey" ]]; then
@@ -674,6 +825,8 @@ configure_run_set() {
     config_set user "$user"
     secret_set "lakehouse/password" "$password"
   fi
+  [[ -n "$data_plane_url" ]] && config_set api_base "$data_plane_url"
+  [[ -n "$control_plane_url" ]] && config_set management_api_base "$control_plane_url"
   printf 'Configuration updated.\n' >&2
 }
 
@@ -708,6 +861,7 @@ configure_run_show() {
   printf '  Config dir:    %s\n' "$(config_dir)"
   printf '  Secret store:  %s\n' "$store_display"
   printf '  Data plane:    %s\n' "$(resolve_api_base)"
+  printf '  Control plane: %s\n' "$(resolve_management_api_base)"
   printf '\n'
   if secret_exists "api-key"; then
     printf '  Authentication: management API key\n'
@@ -746,16 +900,14 @@ urlencode() {
 }
 
 # src/lib/http.sh
-http_request() {
+http_send() {
   local method="$1"
-  local endpoint="$2"
-  local data="$3"
-  local extra_headers=("${@:4}")
+  local url="$2"
+  local auth_header="$3"
+  local data="$4"
+  local extra_headers=("${@:5}")
 
-  local url; url="$(resolve_api_base)${endpoint}"
   local user_agent="altertable-lakehouse-cli/${version}"
-  local auth_header
-  auth_header=$(get_auth_header)
 
   local curl_opts=(
     -s
@@ -804,12 +956,63 @@ http_request() {
   if [[ "${http_code}" -ge 200 && "${http_code}" -lt 300 ]]; then
     echo "${response_body}"
   else
-    log_error "HTTP Request failed with status ${http_code}"
-    if [[ -n "${response_body}" ]]; then
-      log_error "Response: ${response_body}"
-    fi
+    http_report_error "${http_code}" "${response_body}"
     exit 1
   fi
+}
+
+# Map an HTTP status code to a short, human-friendly status line.
+http_status_message() {
+  local code="$1"
+  case "${code}" in
+    401) echo "Authentication failed (401). Check your API key." ;;
+    403) echo "Permission denied (403)." ;;
+    404) echo "Not found (404)." ;;
+    429) echo "Rate limited (429). Try again later." ;;
+    5*)  echo "Server error (${code}). Try again later." ;;
+    *)   echo "Request failed with status ${code}." ;;
+  esac
+}
+
+# Report a non-2xx response: always a friendly status line, plus a detail line
+# only when the body is JSON. Non-JSON bodies (e.g. HTML error pages) are
+# suppressed unless --debug is set, so they never leak to normal output.
+http_report_error() {
+  local code="$1"
+  local body="$2"
+
+  log_error "$(http_status_message "${code}")"
+
+  # Trim leading whitespace to inspect the first significant character.
+  local trimmed="${body#"${body%%[![:space:]]*}"}"
+  if [[ "${trimmed}" == "{"* || "${trimmed}" == "["* ]]; then
+    local detail=""
+    if command -v jq >/dev/null 2>&1; then
+      detail="$(printf '%s' "${body}" | jq -r '(.error.message // .message // .error // empty)' 2>/dev/null)"
+      if [[ -n "${detail}" ]]; then
+        log_error "${detail}"
+      else
+        log_error "Response: $(printf '%s' "${body}" | jq -c '.' 2>/dev/null || printf '%s' "${body}")"
+      fi
+    else
+      log_error "Response: ${body}"
+    fi
+  elif [[ -n "${trimmed}" ]]; then
+    log_debug "Response body: ${body}"
+  fi
+}
+
+http_request() {
+  local method="$1"
+  local endpoint="$2"
+  local data="$3"
+  local extra_headers=("${@:4}")
+
+  local url; url="$(resolve_api_base)${endpoint}"
+  local auth_header
+  auth_header=$(get_auth_header)
+
+  http_send "${method}" "${url}" "${auth_header}" "${data}" "${extra_headers[@]}"
 }
 
 # src/lib/log.sh
@@ -825,6 +1028,70 @@ log_error() {
 
 log_warn() {
   echo "[WARN] $1" >&2
+}
+
+# src/lib/management.sh
+# Management REST API helpers (app.altertable.ai/rest/v1). Bearer auth, env-scoped.
+# Distinct from the data plane (api.altertable.ai, Basic auth) in src/lib/http.sh.
+
+# Resolve the control-plane server root (env var -> stored config -> default), trim a
+# trailing slash, and append the constant /rest/v1 API path.
+resolve_management_api_base() {
+  local root="${ALTERTABLE_MANAGEMENT_API_BASE:-}"
+  [[ -z "$root" ]] && root="$(config_get management_api_base)"
+  [[ -z "$root" ]] && root="https://app.altertable.ai"
+  root="${root%/}"
+  echo "${root}/rest/v1"
+}
+
+# Echo "Authorization: Bearer <key>" from ALTERTABLE_API_KEY or the stored api-key secret.
+get_management_auth_header() {
+  local key="${ALTERTABLE_API_KEY:-}"
+  if [[ -z "$key" ]] && secret_exists "api-key"; then
+    key="$(secret_get 'api-key')"
+  fi
+  if [[ -z "$key" ]]; then
+    log_error "No management API key. Run 'altertable configure --api-key atm_xxx --env <name>' or set ALTERTABLE_API_KEY."
+    exit 1
+  fi
+  echo "Authorization: Bearer ${key}"
+}
+
+# Environment slug: ALTERTABLE_ENV, else the stored api_key_env. May be empty.
+management_env() {
+  local env="${ALTERTABLE_ENV:-}"
+  [[ -z "$env" ]] && env="$(config_get api_key_env)"
+  printf '%s' "$env"
+}
+
+# Environment slug, required.
+require_management_env() {
+  local env; env="$(management_env)"
+  if [[ -z "$env" ]]; then
+    log_error "No environment set. Run 'altertable configure --api-key atm_xxx --env <name>' or set ALTERTABLE_ENV."
+    exit 1
+  fi
+  printf '%s' "$env"
+}
+
+require_jq() {
+  if ! command -v jq >/dev/null 2>&1; then
+    log_error "This command requires 'jq'. Install it: https://jqlang.github.io/jq/"
+    exit 1
+  fi
+}
+
+management_request() {
+  local method="$1"
+  local endpoint="$2"
+  local data="$3"
+  local extra_headers=("${@:4}")
+
+  local url; url="$(resolve_management_api_base)${endpoint}"
+  local auth_header
+  auth_header=$(get_management_auth_header)
+
+  http_send "${method}" "${url}" "${auth_header}" "${data}" "${extra_headers[@]}"
 }
 
 # src/lib/secret.sh
@@ -1039,7 +1306,7 @@ altertable_upload_command() {
     url_params+="&primary_key=${pk_enc}"
   fi
 
-  http_request "POST" "/upsert?${url_params}" "@${file}" "Content-Type: application/octet-stream"
+  http_request "POST" "/upload?${url_params}" "@${file}" "Content-Type: application/octet-stream"
 
 }
 
@@ -1079,6 +1346,94 @@ altertable_configure_command() {
   else
     configure_run_set
   fi
+
+}
+
+# :command.function
+altertable_whoami_command() {
+
+  # src/whoami_command.sh
+  require_jq
+  response="$(management_request "GET" "/whoami" "")"
+
+  ptype="$(printf '%s' "$response" | jq -r '.principal.type // empty')"
+  pname="$(printf '%s' "$response" | jq -r '.principal.name // empty')"
+  pemail="$(printf '%s' "$response" | jq -r '.principal.email // empty')"
+  pslug="$(printf '%s' "$response" | jq -r '.principal.slug // empty')"
+  oname="$(printf '%s' "$response" | jq -r '.organization.name // empty')"
+  oslug="$(printf '%s' "$response" | jq -r '.organization.slug // empty')"
+
+  if [[ "$ptype" == "ServiceAccount" ]]; then
+    printf 'Service account: %s (%s)\n' "$pname" "$pslug"
+  elif [[ -n "$pemail" ]]; then
+    printf 'User: %s <%s>\n' "$pname" "$pemail"
+  else
+    printf 'User: %s\n' "$pname"
+  fi
+  printf 'Organization: %s (%s)\n' "$oname" "$oslug"
+
+}
+
+# :command.function
+altertable_catalogs_create_command() {
+
+  # src/catalogs_create_command.sh
+  require_jq
+
+  engine="${args[--engine]}"
+  name="${args[--name]}"
+
+  if [[ "$engine" != "altertable" ]]; then
+    log_error "Only the 'altertable' engine is supported (got '${engine}')."
+    exit 1
+  fi
+
+  env="$(require_management_env)"
+  body="$(jq -cn --arg name "$name" '{name: $name, engine: "altertable"}')"
+
+  response="$(management_request "POST" "/environments/${env}/databases" "$body")"
+
+  cslug="$(printf '%s' "$response" | jq -r '(.database // .connection).slug // empty')"
+  cname="$(printf '%s' "$response" | jq -r '(.database // .connection).name // empty')"
+  cengine="$(printf '%s' "$response" | jq -r '(.database // .connection).engine // "altertable"')"
+  [[ -z "$cname" ]] && cname="$name"
+
+  printf 'Created catalog "%s" (slug: %s, engine: %s, environment: %s).\n' \
+    "$cname" "$cslug" "$cengine" "$env"
+
+}
+
+# :command.function
+altertable_catalogs_list_command() {
+
+  # src/catalogs_list_command.sh
+  require_jq
+  env="$(require_management_env)"
+
+  databases="$(management_request "GET" "/environments/${env}/databases" "")"
+  connections="$(management_request "GET" "/environments/${env}/connections" "")"
+
+  # Emit tab-separated rows: TYPE, NAME, SLUG, ENGINE, CATALOG. Databases first.
+  rows="$(
+    {
+      printf '%s' "$databases" | jq -r '
+        (.databases // [])[] |
+        ["database", (.name // ""), (.slug // ""), "altertable", (.catalog // "")] | @tsv'
+      printf '%s' "$connections" | jq -r '
+        (.connections // [])[] |
+        ["connection", (.name // ""), (.slug // ""), (.engine // ""), (.catalog // "")] | @tsv'
+    }
+  )"
+
+  if [[ -z "$rows" ]]; then
+    printf 'No catalogs found.\n'
+    exit 0
+  fi
+
+  {
+    printf 'TYPE\tNAME\tSLUG\tENGINE\tCATALOG\n'
+    printf '%s\n' "$rows"
+  } | column -t -s "$(printf '\t')"
 
 }
 
@@ -1177,6 +1532,20 @@ parse_requirements() {
       action="configure"
       shift
       altertable_configure_parse_requirements "$@"
+      shift $#
+      ;;
+
+    whoami)
+      action="whoami"
+      shift
+      altertable_whoami_parse_requirements "$@"
+      shift $#
+      ;;
+
+    catalogs)
+      action="catalogs"
+      shift
+      altertable_catalogs_parse_requirements "$@"
       shift $#
       ;;
 
@@ -2029,6 +2398,34 @@ altertable_configure_parse_requirements() {
         ;;
 
       # :flag.case
+      --data-plane-url)
+
+        # :flag.case_arg
+        if [[ -n ${2+x} ]]; then
+          args['--data-plane-url']="$2"
+          shift
+          shift
+        else
+          printf "%s\n" "--data-plane-url requires an argument: --data-plane-url URL" >&2
+          exit 1
+        fi
+        ;;
+
+      # :flag.case
+      --control-plane-url)
+
+        # :flag.case_arg
+        if [[ -n ${2+x} ]]; then
+          args['--control-plane-url']="$2"
+          shift
+          shift
+        else
+          printf "%s\n" "--control-plane-url requires an argument: --control-plane-url URL" >&2
+          exit 1
+        fi
+        ;;
+
+      # :flag.case
       --debug)
 
         # :flag.case_no_arg
@@ -2067,9 +2464,286 @@ altertable_configure_parse_requirements() {
 
 }
 
+# :command.parse_requirements
+altertable_whoami_parse_requirements() {
+  local key
+
+  # :command.fixed_flags_filter
+  while [[ $# -gt 0 ]]; do
+    key="$1"
+    case "$key" in
+      --help | -h)
+        long_usage=yes
+        altertable_whoami_usage
+        exit
+        ;;
+
+      *)
+        break
+        ;;
+
+    esac
+  done
+
+  # :command.command_filter
+  action="whoami"
+
+  # :command.parse_requirements_while
+  while [[ $# -gt 0 ]]; do
+    key="$1"
+    case "$key" in
+      # :flag.case
+      --debug)
+
+        # :flag.case_no_arg
+        args['--debug']=1
+        shift
+        ;;
+
+      -?*)
+        printf "invalid option: %s\n" "$key" >&2
+        exit 1
+        ;;
+
+      *)
+        # :command.parse_requirements_case
+        # :command.parse_requirements_case_simple
+        printf "invalid argument: %s\n" "$key" >&2
+        exit 1
+
+        ;;
+
+    esac
+  done
+
+}
+
+# :command.parse_requirements
+altertable_catalogs_parse_requirements() {
+  local key
+
+  # :command.fixed_flags_filter
+  while [[ $# -gt 0 ]]; do
+    key="$1"
+    case "$key" in
+      --help | -h)
+        long_usage=yes
+        altertable_catalogs_usage
+        exit
+        ;;
+
+      *)
+        break
+        ;;
+
+    esac
+  done
+
+  # :command.command_filter
+  action=${1:-}
+
+  case $action in
+    -*) ;;
+
+    create)
+      action="create"
+      shift
+      altertable_catalogs_create_parse_requirements "$@"
+      shift $#
+      ;;
+
+    list)
+      action="list"
+      shift
+      altertable_catalogs_list_parse_requirements "$@"
+      shift $#
+      ;;
+
+    # :command.command_fallback
+    "")
+      altertable_catalogs_usage >&2
+      exit 1
+      ;;
+
+    *)
+      printf "invalid command: %s\n" "$action" >&2
+      exit 1
+      ;;
+
+  esac
+
+  # :command.parse_requirements_while
+  while [[ $# -gt 0 ]]; do
+    key="$1"
+    case "$key" in
+
+      -?*)
+        printf "invalid option: %s\n" "$key" >&2
+        exit 1
+        ;;
+
+      *)
+        # :command.parse_requirements_case
+        # :command.parse_requirements_case_simple
+        printf "invalid argument: %s\n" "$key" >&2
+        exit 1
+
+        ;;
+
+    esac
+  done
+
+}
+
+# :command.parse_requirements
+altertable_catalogs_create_parse_requirements() {
+  local key
+
+  # :command.fixed_flags_filter
+  while [[ $# -gt 0 ]]; do
+    key="$1"
+    case "$key" in
+      --help | -h)
+        long_usage=yes
+        altertable_catalogs_create_usage
+        exit
+        ;;
+
+      *)
+        break
+        ;;
+
+    esac
+  done
+
+  # :command.command_filter
+  action="catalogs create"
+
+  # :command.parse_requirements_while
+  while [[ $# -gt 0 ]]; do
+    key="$1"
+    case "$key" in
+      # :flag.case
+      --engine)
+
+        # :flag.case_arg
+        if [[ -n ${2+x} ]]; then
+          args['--engine']="$2"
+          shift
+          shift
+        else
+          printf "%s\n" "--engine requires an argument: --engine NAME" >&2
+          exit 1
+        fi
+        ;;
+
+      # :flag.case
+      --name)
+
+        # :flag.case_arg
+        if [[ -n ${2+x} ]]; then
+          args['--name']="$2"
+          shift
+          shift
+        else
+          printf "%s\n" "--name requires an argument: --name NAME" >&2
+          exit 1
+        fi
+        ;;
+
+      # :flag.case
+      --debug)
+
+        # :flag.case_no_arg
+        args['--debug']=1
+        shift
+        ;;
+
+      -?*)
+        printf "invalid option: %s\n" "$key" >&2
+        exit 1
+        ;;
+
+      *)
+        # :command.parse_requirements_case
+        # :command.parse_requirements_case_simple
+        printf "invalid argument: %s\n" "$key" >&2
+        exit 1
+
+        ;;
+
+    esac
+  done
+
+  # :command.required_flags_filter
+  if [[ -z ${args['--engine']+x} ]]; then
+    printf "missing required flag: --engine NAME\n" >&2
+    exit 1
+  fi
+  if [[ -z ${args['--name']+x} ]]; then
+    printf "missing required flag: --name NAME\n" >&2
+    exit 1
+  fi
+
+}
+
+# :command.parse_requirements
+altertable_catalogs_list_parse_requirements() {
+  local key
+
+  # :command.fixed_flags_filter
+  while [[ $# -gt 0 ]]; do
+    key="$1"
+    case "$key" in
+      --help | -h)
+        long_usage=yes
+        altertable_catalogs_list_usage
+        exit
+        ;;
+
+      *)
+        break
+        ;;
+
+    esac
+  done
+
+  # :command.command_filter
+  action="catalogs list"
+
+  # :command.parse_requirements_while
+  while [[ $# -gt 0 ]]; do
+    key="$1"
+    case "$key" in
+      # :flag.case
+      --debug)
+
+        # :flag.case_no_arg
+        args['--debug']=1
+        shift
+        ;;
+
+      -?*)
+        printf "invalid option: %s\n" "$key" >&2
+        exit 1
+        ;;
+
+      *)
+        # :command.parse_requirements_case
+        # :command.parse_requirements_case_simple
+        printf "invalid argument: %s\n" "$key" >&2
+        exit 1
+
+        ;;
+
+    esac
+  done
+
+}
+
 # :command.initialize
 initialize() {
-  declare -g version="0.4.0"
+  declare -g version="0.4.1"
   set -e
 
 }
@@ -2094,6 +2768,10 @@ run() {
     "get-query") altertable_get_query_command ;;
     "cancel") altertable_cancel_command ;;
     "configure") altertable_configure_command ;;
+    "whoami") altertable_whoami_command ;;
+    "catalogs") altertable_catalogs_command ;;
+    "catalogs create") altertable_catalogs_create_command ;;
+    "catalogs list") altertable_catalogs_list_command ;;
   esac
 }
 

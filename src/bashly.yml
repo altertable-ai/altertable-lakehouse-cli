@@ -163,4 +163,37 @@ commands:
     help: Show stored configuration (secrets masked)
   - long: --clear
     help: Remove all stored configuration and credentials (no prompt)
+  - long: --data-plane-url
+    arg: url
+    help: "Data-plane base URL (stored with the credential; default: https://api.altertable.ai)"
+  - long: --control-plane-url
+    arg: url
+    help: "Control-plane server root; the CLI appends /rest/v1 (default: https://app.altertable.ai)"
   - *debug_flag
+
+- name: whoami
+  help: Show the authenticated principal and organization (management API).
+  flags:
+  - *debug_flag
+
+- name: catalogs
+  help: Manage catalogs (databases and connections) in the current environment.
+  commands:
+  - name: create
+    help: Create a catalog. Only the 'altertable' engine is supported.
+    examples:
+    - altertable catalogs create --engine altertable --name "My Cat"
+    flags:
+    - long: --engine
+      arg: name
+      help: Catalog engine (only 'altertable' is supported)
+      required: true
+    - long: --name
+      arg: name
+      help: Catalog name
+      required: true
+    - *debug_flag
+  - name: list
+    help: List catalogs in the current environment.
+    flags:
+    - *debug_flag
