@@ -1306,7 +1306,7 @@ altertable_upload_command() {
     url_params+="&primary_key=${pk_enc}"
   fi
 
-  http_request "POST" "/upsert?${url_params}" "@${file}" "Content-Type: application/octet-stream"
+  http_request "POST" "/upload?${url_params}" "@${file}" "Content-Type: application/octet-stream"
 
 }
 
@@ -2743,7 +2743,7 @@ altertable_catalogs_list_parse_requirements() {
 
 # :command.initialize
 initialize() {
-  declare -g version="0.4.0"
+  declare -g version="0.4.1"
   set -e
 
 }
