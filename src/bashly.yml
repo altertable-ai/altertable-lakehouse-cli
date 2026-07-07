@@ -1,6 +1,6 @@
 name: altertable
 help: A Bash-based CLI for the Altertable Lakehouse API.
-version: 0.4.1 # x-release-please-version
+version: 0.5.0 # x-release-please-version
 
 environment_variables:
 - name: altertable_lakehouse_username
