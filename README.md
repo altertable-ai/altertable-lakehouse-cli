@@ -1,4 +1,6 @@
-# Altertable Lakehouse CLI
+> ⚠️ `altertable-lakehouse-cli` has been superseded by: **[altertable-ai/altertable-cli](https://github.com/altertable-ai/altertable-cli)**
+
+# Altertable Lakehouse CLI (Archived)
 
 A Bash-based CLI for the Altertable Lakehouse API.
 
